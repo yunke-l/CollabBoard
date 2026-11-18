@@ -63,6 +63,8 @@ Tests use embedded PostgreSQL via PGlite when `TEST_DATABASE_URL` is absent. CI 
 
 `pnpm check:repository` checks the Git index, so stage intended files before running it on a fresh checkout. It rejects tracked requirements, design references, environment secrets, private keys, generated dependencies, and non-English project text.
 
+`pnpm check:runtime` starts the compiled API on an available loopback port and verifies startup, sample reads, session lifecycle, authorization, error handling, payload limits, and OpenAPI. It runs automatically as part of `pnpm check` after the build.
+
 ## Development boundaries
 
 Business writes commit before success is returned. Project and Owner membership creation are atomic; task creation includes its revision, activity, outbox event, and idempotency result in the same transaction. API permission checks use current database membership. Event rows contain identifiers and versions; delivery workers are not implemented yet.

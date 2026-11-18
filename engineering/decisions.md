@@ -9,6 +9,7 @@
 - Plain PostgreSQL SQL migrations keep constraints and transaction boundaries reviewable. The migration runner uses an advisory lock, checksums applied files, and applies each new migration transactionally. Applied migrations are immutable; add a new numbered file for schema changes.
 - Vitest checks contracts and database operations. PGlite provides local database tests without Docker; CI repeats the database suite against PostgreSQL 17.
 - Native HTML dialogs provide focus containment and Escape support. Task detail routes reuse the same board context in a desktop side panel and a full-screen mobile dialog.
+- CI also starts the compiled API and checks its HTTP boundaries, catching runtime dependency resolution failures that source tests and compilation alone cannot detect.
 
 ## Current data integrity
 
