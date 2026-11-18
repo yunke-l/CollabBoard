@@ -1,0 +1,29 @@
+# Local product requirements and design references are never published.
+/docs/
+/design/
+/CollabBoard-Design-*.zip
+/CollabBoard-Design-*.zip.sha256
+
+# Dependencies and generated output
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+.pnpm-store/
+.cache/
+
+# Secrets and local runtime data
+.env
+.env.*
+!.env.example
+.local/
+*.log
+*.pem
+*.key
+.aws/
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json

@@ -1,0 +1,8 @@
+node_modules
+dist
+pnpm-lock.yaml
+coverage
+docs
+design
+*.zip
+*.sha256

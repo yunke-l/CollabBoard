@@ -1,0 +1,40 @@
+{
+  "name": "collabboard",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A collaborative task board for small teams.",
+  "packageManager": "pnpm@10.15.1",
+  "engines": {
+    "node": ">=24 <25",
+    "pnpm": ">=10 <11"
+  },
+  "scripts": {
+    "dev": "concurrently --kill-others -n api,web -c blue,magenta \"pnpm dev:api\" \"pnpm dev:web\"",
+    "dev:web": "pnpm --filter @collabboard/web dev",
+    "dev:api": "pnpm --filter @collabboard/api dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck && tsc -p tsconfig.tests.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "pnpm format:check && pnpm typecheck && pnpm test && pnpm build && pnpm check:repository",
+    "check:repository": "node scripts/check-repository.mjs",
+    "db:up": "docker compose -f infra/local/compose.yaml up -d --wait",
+    "db:down": "docker compose -f infra/local/compose.yaml down",
+    "db:migrate": "pnpm --filter @collabboard/api db:migrate",
+    "db:seed": "pnpm --filter @collabboard/api db:seed"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.16",
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.15.5",
+    "concurrently": "10.0.7",
+    "prettier": "3.10.1",
+    "pg": "^8.16.3",
+    "reflect-metadata": "0.2.2",
+    "typescript": "5.9.3",
+    "vitest": "5.1.1"
+  }
+}
