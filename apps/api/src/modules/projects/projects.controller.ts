@@ -7,15 +7,21 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   Req,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
-import { createProjectSchema, createTaskSchema } from '@collabboard/contracts';
+import {
+  createProjectSchema,
+  createTaskSchema,
+  paginationQuerySchema,
+} from '@collabboard/contracts';
+import { pageQuery } from '../../platform/http/pagination.js';
 import { LocalIdentityProvider } from '../identity/identity.service.js';
 import { ProjectsService } from './projects.service.js';
 
-function validate<T>(
+export function validate<T>(
   schema: {
     safeParse(value: unknown):
       | { success: true; data: T }
@@ -52,8 +58,11 @@ export class ProjectsController {
 
   @Get()
   @ApiOperation({ summary: 'List projects belonging to the current user' })
-  list(@Req() request: Request) {
-    return this.projects.list(this.identity.authenticate(request).id);
+  @pageQuery()
+  list(@Req() request: Request, @Query() query: unknown) {
+    const user = this.identity.authenticate(request);
+    const { cursor, limit } = validate(paginationQuerySchema, query);
+    return this.projects.list(user.id, cursor, limit);
   }
 
   @Post()
@@ -97,6 +106,7 @@ export class ProjectsController {
         status: { type: 'string', enum: ['todo', 'in_progress', 'done'] },
         priority: { type: 'string', enum: ['low', 'medium', 'high'] },
         dueDate: { type: 'string', format: 'date', nullable: true },
+        assigneeId: { type: 'string', format: 'uuid', nullable: true },
       },
     },
   })

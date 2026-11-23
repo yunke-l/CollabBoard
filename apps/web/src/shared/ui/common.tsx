@@ -1,6 +1,12 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  useEffect,
+  useRef,
+  useSyncExternalStore,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import { Link } from 'react-router';
-import { AlertCircle, Monitor, Moon, Sun, X } from 'lucide-react';
+import { AlertCircle, Moon, Sun, X } from 'lucide-react';
 
 export function Brand() {
   return (
@@ -17,15 +23,37 @@ export function Brand() {
     </Link>
   );
 }
-export function Avatar({ name }: { name: string | null }) {
+const avatarHues = [24, 175, 320, 150, 355, 222, 270, 195, 48];
+
+function avatarHue(key: string) {
+  let hash = 2166136261;
+  for (const char of key) {
+    hash = Math.imul(hash ^ char.codePointAt(0)!, 16777619);
+  }
+  return avatarHues[(hash >>> 0) % avatarHues.length];
+}
+
+export function Avatar({
+  name,
+  userId,
+}: {
+  name: string | null;
+  userId?: string | null | undefined;
+}) {
+  const displayName = name?.trim();
+  const key = userId || displayName?.normalize('NFC').toLowerCase();
+
   return (
     <span
-      className="avatar"
-      title={name ?? 'Unassigned'}
-      aria-label={name ?? 'Unassigned'}
+      className={key ? 'avatar avatar-person' : 'avatar'}
+      style={
+        key ? ({ '--avatar-hue': avatarHue(key) } as CSSProperties) : undefined
+      }
+      title={displayName || 'Unassigned'}
+      aria-label={displayName || 'Unassigned'}
     >
-      {name
-        ? name
+      {displayName
+        ? displayName
             .split(/\s+/)
             .slice(0, 2)
             .map((part) => Array.from(part)[0])
@@ -34,50 +62,38 @@ export function Avatar({ name }: { name: string | null }) {
     </span>
   );
 }
+const appearanceEvent = 'collabboard:appearance';
+function subscribeToAppearance(onChange: () => void) {
+  window.addEventListener(appearanceEvent, onChange);
+  return () => window.removeEventListener(appearanceEvent, onChange);
+}
+function currentAppearance() {
+  return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+}
 export function ThemeSwitch() {
-  const [preference, setPreference] = useState(() => {
+  const theme = useSyncExternalStore(subscribeToAppearance, currentAppearance);
+  const nextTheme = theme === 'dark' ? 'light' : 'dark';
+  const label = `Switch to ${nextTheme} mode`;
+  const Icon = theme === 'dark' ? Sun : Moon;
+  function toggleTheme() {
+    document.documentElement.dataset.theme = nextTheme;
     try {
-      return localStorage.getItem('collabboard.appearance') ?? 'system';
-    } catch {
-      return 'system';
-    }
-  });
-  useEffect(() => {
-    const media = matchMedia('(prefers-color-scheme: dark)');
-    const update = () => {
-      document.documentElement.dataset.theme =
-        preference === 'dark' || (preference === 'system' && media.matches)
-          ? 'dark'
-          : 'light';
-    };
-    update();
-    media.addEventListener('change', update);
-    try {
-      localStorage.setItem('collabboard.appearance', preference);
+      localStorage.setItem('collabboard.appearance', nextTheme);
     } catch {
       /* Preference remains available for this page. */
     }
-    return () => media.removeEventListener('change', update);
-  }, [preference]);
+    window.dispatchEvent(new Event(appearanceEvent));
+  }
   return (
-    <div className="theme-switch" role="group" aria-label="Appearance">
-      {(['light', 'dark', 'system'] as const).map((value) => {
-        const Icon =
-          value === 'light' ? Sun : value === 'dark' ? Moon : Monitor;
-        return (
-          <button
-            key={value}
-            type="button"
-            aria-label={`${value[0]!.toUpperCase()}${value.slice(1)} theme`}
-            aria-pressed={preference === value}
-            onClick={() => setPreference(value)}
-          >
-            <Icon size={18} />
-            <span className="sr-only">{value}</span>
-          </button>
-        );
-      })}
-    </div>
+    <button
+      className="theme-switch"
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={toggleTheme}
+    >
+      <Icon size={18} aria-hidden="true" />
+    </button>
   );
 }
 export function Notice({ children }: { children: ReactNode }) {
@@ -121,11 +137,13 @@ export function Dialog({
   children,
   onClose,
   drawer = false,
+  busy = false,
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
   drawer?: boolean;
+  busy?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const closeRef = useRef(onClose);
@@ -147,12 +165,13 @@ export function Dialog({
       ref={ref}
       className={drawer ? 'dialog drawer' : 'dialog'}
       aria-label={title}
+      aria-busy={busy}
       onCancel={(event) => {
         event.preventDefault();
-        closeRef.current();
+        if (!busy) closeRef.current();
       }}
       onClick={(event) => {
-        if (event.target === event.currentTarget) closeRef.current();
+        if (!busy && event.target === event.currentTarget) closeRef.current();
       }}
     >
       <div className="dialog-inner">
@@ -161,6 +180,7 @@ export function Dialog({
           <button
             className="icon-button"
             aria-label="Close dialog"
+            disabled={busy}
             onClick={onClose}
           >
             <X size={20} />

@@ -1,7 +1,10 @@
 name: collabboard
 services:
   postgres:
-    image: postgres:17.7-alpine
+    image: collabboard-postgres:17.12-patched
+    pull_policy: build
+    build:
+      context: ../postgres
     environment:
       POSTGRES_USER: collabboard
       POSTGRES_PASSWORD: collabboard_local

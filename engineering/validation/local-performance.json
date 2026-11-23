@@ -1,0 +1,63 @@
+{
+  "date": "2026-11-19T21:18:27.693Z",
+  "scope": "Local loopback API, Docker PostgreSQL, and headless Chrome; no AWS services",
+  "fullDuration": true,
+  "durationSeconds": 600,
+  "dataset": {
+    "projects": 20,
+    "tasksPerProject": 300,
+    "membersPerProject": 10,
+    "commentsPerTask": 3,
+    "capacityProjectTasks": 500
+  },
+  "load": {
+    "readsPerSecond": 20,
+    "writesPerSecond": 5,
+    "realtimeConnections": 50
+  },
+  "runtime": {
+    "node": "v24.5.0",
+    "database": "PostgreSQL 17.12 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",
+    "browser": "158.0.8127.36"
+  },
+  "coldBoard": {
+    "tasks": 300,
+    "bandwidthMbps": 10,
+    "addedLatencyMs": 100,
+    "usableMs": 1391.61
+  },
+  "capacityBoard": {
+    "tasks": 500,
+    "responseMs": 26.66
+  },
+  "measured": {
+    "reads": 11999,
+    "writes": 3000,
+    "readP95Ms": 3012.7,
+    "writeP95Ms": 3063.58,
+    "firstHintP95Ms": 77163,
+    "hintSamples": 2448,
+    "browserRenderP95Ms": 8049,
+    "browserRenderSamples": 140,
+    "serviceErrors": 550,
+    "expected4xx": 0,
+    "errorRate": 0.03666911127408494
+  },
+  "recovery": {
+    "method": "Local pg_dump/pg_restore with writes stopped; not continuous point-in-time recovery",
+    "verifiedTables": 10,
+    "backupBytes": 2169829,
+    "recoveryMs": 14465.67,
+    "lostCommittedWrites": 0
+  },
+  "targets": {
+    "ordinaryRead": false,
+    "ordinaryWrite": false,
+    "serviceErrorRate": false,
+    "coldBoard": true,
+    "browserRendering": false,
+    "capacity": true,
+    "recovery": true,
+    "noUnexpectedRejections": true
+  }
+}

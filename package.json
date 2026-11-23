@@ -16,6 +16,8 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck && tsc -p tsconfig.tests.json --noEmit",
     "test": "vitest run",
+    "test:browser": "node --env-file-if-exists=.env scripts/check-browser.mjs",
+    "test:postgres": "node --env-file-if-exists=.env scripts/check-database.mjs",
     "test:watch": "vitest",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -23,17 +25,21 @@
     "check:runtime": "node scripts/smoke-api.mjs",
     "check:repository": "node scripts/check-repository.mjs",
     "db:up": "docker compose -f infra/local/compose.yaml up -d --wait",
+    "db:rebuild": "docker compose -f infra/local/compose.yaml build --pull --no-cache postgres && pnpm db:up",
     "db:down": "docker compose -f infra/local/compose.yaml down",
     "db:migrate": "pnpm --filter @collabboard/api db:migrate",
-    "db:seed": "pnpm --filter @collabboard/api db:seed"
+    "db:seed": "pnpm --filter @collabboard/api db:seed",
+    "test:performance": "node --env-file-if-exists=.env scripts/check-performance.mjs",
+    "jobs:retry-events": "node --env-file-if-exists=.env scripts/retry-events.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.16",
     "@types/node": "^24.0.0",
     "@types/pg": "^8.15.5",
     "concurrently": "10.0.7",
-    "prettier": "3.10.1",
     "pg": "^8.16.3",
+    "playwright": "1.62.1",
+    "prettier": "3.10.1",
     "reflect-metadata": "0.2.2",
     "typescript": "5.9.3",
     "vitest": "5.1.1"

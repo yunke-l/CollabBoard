@@ -1,11 +1,14 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
-const files = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8' })
+const files = execFileSync(
+  'git',
+  ['ls-files', '--cached', '--others', '--exclude-standard', '-z'],
+  { encoding: 'utf8' },
+)
   .split('\0')
   .filter(Boolean);
-if (!files.length)
-  throw new Error('Stage the project files before checking the repository.');
+if (!files.length) throw new Error('No project files were found.');
 const forbidden =
   /^(?:docs\/|design\/|CollabBoard-Design-.*\.(?:zip|sha256)$)|(?:^|\/)node_modules\/|\.(?:pem|key)$/;
 const excluded = files.filter(
@@ -27,5 +30,5 @@ if (nonEnglish.length)
     `Project-provided text must be English: ${nonEnglish.join(', ')}`,
   );
 console.info(
-  `Repository audit passed: ${files.length} tracked files; no local requirements, design references, or secrets are tracked.`,
+  `Repository audit passed: ${files.length} tracked or unignored files; no local requirements, design references, or secret files are included.`,
 );

@@ -5,7 +5,6 @@ import {
   CircleDashed,
   MessageSquare,
   Paperclip,
-  SignalHigh,
   Plus,
 } from 'lucide-react';
 import { Link } from 'react-router';
@@ -37,6 +36,9 @@ export function TaskBoard({
   selectedColumn,
   onColumnChange,
   onAdd,
+  onMove,
+  canReorder = false,
+  moving = false,
 }: {
   tasks: Task[];
   allTasks: Task[];
@@ -44,6 +46,13 @@ export function TaskBoard({
   selectedColumn: TaskStatus;
   onColumnChange: (status: TaskStatus) => void;
   onAdd?: (status: TaskStatus) => void;
+  onMove?: (
+    taskId: string,
+    status: TaskStatus,
+    beforeTaskId: string | null,
+  ) => void;
+  canReorder?: boolean;
+  moving?: boolean;
 }) {
   return (
     <>
@@ -51,6 +60,7 @@ export function TaskBoard({
         {taskStatuses.map((status) => (
           <button
             key={status}
+            data-status={status}
             aria-pressed={selectedColumn === status}
             onClick={() => onColumnChange(status)}
           >
@@ -69,12 +79,27 @@ export function TaskBoard({
               : status === 'in_progress'
                 ? CircleDashed
                 : CheckCircle2;
-          const column = tasks.filter((task) => task.status === status);
+          const column = tasks
+            .filter((task) => task.status === status)
+            .sort((a, b) => a.position - b.position);
           return (
             <section
               className={`board-column ${selectedColumn === status ? 'selected-column' : ''}`}
               key={status}
+              data-status={status}
               aria-label={statusLabels[status]}
+              onDragOver={(event) => {
+                if (onMove && canReorder && !moving) event.preventDefault();
+              }}
+              onDrop={(event) => {
+                if (!onMove || !canReorder || moving) return;
+                event.preventDefault();
+                const id = event.dataTransfer.getData(
+                  'application/x-collabboard-task',
+                );
+                if (allTasks.some((task) => task.id === id))
+                  onMove(id, status, null);
+              }}
             >
               <header>
                 <Icon size={20} />
@@ -93,47 +118,146 @@ export function TaskBoard({
                 )}
               </header>
               <div className="task-list">
-                {column.map((task) => (
-                  <Link
-                    className={`task-card ${task.status === 'done' ? 'completed' : ''}`}
+                {column.map((task, index) => (
+                  <article
+                    className="task-card-shell"
                     key={task.id}
-                    to={taskUrl(task.id)}
+                    onDragOver={(event) => {
+                      if (onMove && canReorder && !moving) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                      }
+                    }}
+                    onDrop={(event) => {
+                      if (!onMove || !canReorder || moving) return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      const id = event.dataTransfer.getData(
+                        'application/x-collabboard-task',
+                      );
+                      if (
+                        id !== task.id &&
+                        allTasks.some((item) => item.id === id)
+                      )
+                        onMove(id, status, task.id);
+                    }}
                   >
-                    <div className="card-top">
-                      <span className="task-reference">
-                        {task.id.startsWith('CB-')
-                          ? task.id
-                          : `CB-${task.id.slice(0, 6).toUpperCase()}`}
-                      </span>
-                      <span className={`priority ${task.priority}`}>
-                        <SignalHigh size={13} />
-                        {task.priority[0]!.toUpperCase() +
-                          task.priority.slice(1)}
-                      </span>
-                    </div>
-                    <h3>{task.title}</h3>
-                    <div className="card-meta">
-                      {task.dueDate && (
-                        <span className={isOverdue(task) ? 'overdue' : ''}>
-                          <CalendarDays size={14} />
-                          {dueDateLabel(task)}
+                    <Link
+                      className={`task-card ${task.status === 'done' ? 'completed' : ''}`}
+                      to={taskUrl(task.id)}
+                      draggable={false}
+                    >
+                      <div className="card-top">
+                        <span className="task-reference">
+                          {task.id.startsWith('CB-')
+                            ? task.id
+                            : `CB-${task.id.slice(0, 6).toUpperCase()}`}
                         </span>
-                      )}
-                      <span aria-label={`${task.commentCount} comments`}>
-                        <MessageSquare size={14} />
-                        {task.commentCount}
-                      </span>
-                      {task.attachmentCount > 0 && (
-                        <span
-                          aria-label={`${task.attachmentCount} attachments`}
+                        <span className={`priority ${task.priority}`}>
+                          {task.priority[0]!.toUpperCase() +
+                            task.priority.slice(1)}
+                        </span>
+                      </div>
+                      <h3>{task.title}</h3>
+                      <div className="card-meta">
+                        {task.dueDate && (
+                          <span className={isOverdue(task) ? 'overdue' : ''}>
+                            <CalendarDays size={14} />
+                            {dueDateLabel(task)}
+                          </span>
+                        )}
+                        <span aria-label={`${task.commentCount} comments`}>
+                          <MessageSquare size={14} />
+                          {task.commentCount}
+                        </span>
+                        {task.attachmentCount > 0 && (
+                          <span
+                            aria-label={`${task.attachmentCount} attachments`}
+                          >
+                            <Paperclip size={14} />
+                            {task.attachmentCount}
+                          </span>
+                        )}
+                        <Avatar
+                          name={task.assigneeName}
+                          userId={task.assigneeId}
+                        />
+                      </div>
+                    </Link>
+                    {onMove && (
+                      <div className="task-card-actions">
+                        <button
+                          className="icon-button drag-handle"
+                          aria-label={`Drag ${task.title}`}
+                          title={
+                            canReorder
+                              ? 'Drag to reorder'
+                              : 'Clear filters to reorder'
+                          }
+                          disabled={!canReorder || moving}
+                          draggable={canReorder && !moving}
+                          onDragStart={(event) => {
+                            event.dataTransfer.setData(
+                              'application/x-collabboard-task',
+                              task.id,
+                            );
+                            event.dataTransfer.effectAllowed = 'move';
+                          }}
                         >
-                          <Paperclip size={14} />
-                          {task.attachmentCount}
-                        </span>
-                      )}
-                      <Avatar name={task.assigneeName} />
-                    </div>
-                  </Link>
+                          ↕
+                        </button>
+                        <label>
+                          <span className="sr-only">Move {task.title} to</span>
+                          <select
+                            aria-label={`Move ${task.title} to`}
+                            value=""
+                            disabled={moving}
+                            onChange={(event) => {
+                              if (event.target.value)
+                                onMove(
+                                  task.id,
+                                  event.target.value as TaskStatus,
+                                  null,
+                                );
+                            }}
+                          >
+                            <option value="">Move to…</option>
+                            {taskStatuses.map((target) => (
+                              <option value={target} key={target}>
+                                {statusLabels[target]}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <button
+                          className="icon-button"
+                          aria-label={`Move ${task.title} up`}
+                          disabled={!canReorder || moving || index === 0}
+                          onClick={() =>
+                            onMove(task.id, status, column[index - 1]!.id)
+                          }
+                        >
+                          ↑
+                        </button>
+                        <button
+                          className="icon-button"
+                          aria-label={`Move ${task.title} down`}
+                          disabled={
+                            !canReorder || moving || index === column.length - 1
+                          }
+                          onClick={() =>
+                            onMove(
+                              task.id,
+                              status,
+                              column[index + 2]?.id ?? null,
+                            )
+                          }
+                        >
+                          ↓
+                        </button>
+                      </div>
+                    )}
+                  </article>
                 ))}
                 {column.length === 0 && (
                   <div className="column-empty">No tasks here yet.</div>

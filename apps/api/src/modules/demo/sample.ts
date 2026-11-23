@@ -114,8 +114,10 @@ const rows: [
 export const sampleBoard: BoardSnapshot = {
   project: {
     id: 'sample',
+    isTrial: false,
+    expiresAt: null,
     name: 'Website launch',
-    description: 'A thoughtful refresh, from first idea to launch day.',
+    description: '',
     status: 'active',
     role: 'Viewer',
     boardRevision: 1,
@@ -141,14 +143,14 @@ export const sampleBoard: BoardSnapshot = {
       priority,
       dueDate,
       assigneeName,
+      assigneeId: null,
       commentCount,
       attachmentCount,
       projectId: 'sample',
       position,
       version: 1,
       archivedAt: null,
-      description:
-        'Bring clarity to the next step. Review the requirements with the team, capture the important decisions, and make sure the result is accessible and easy to use.\n\nThis is synthetic sample content. Explore the board and task details without changing any project data.',
+      description: '',
     }),
   ),
 };

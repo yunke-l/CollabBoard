@@ -1,36 +1,45 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router';
-import { useQuery } from '@tanstack/react-query';
+import { Link, useLocation, useNavigate } from 'react-router';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { FolderKanban, Layers, Plus } from 'lucide-react';
 import type { CursorPage, Project } from '@collabboard/contracts';
 import { api } from '../../shared/api/client';
-import { ErrorState, LoadingState } from '../../shared/ui/common';
+import { ErrorState, LoadingState, Notice } from '../../shared/ui/common';
 import { useSession } from '../../app/providers/session';
+import { TrialControls } from '../../features/trials/trial-controls';
 import { CreateProjectDialog } from '../../features/projects/create-project-dialog';
 
 export function ProjectsPage() {
   const { user } = useSession();
   const navigate = useNavigate();
+  const location = useLocation();
   const [tab, setTab] = useState<'active' | 'archived'>('active');
   const [creating, setCreating] = useState(false);
-  const query = useQuery({
+  const query = useInfiniteQuery({
     queryKey: ['projects', user?.id],
-    queryFn: ({ signal }) => api<CursorPage<Project>>('/projects', { signal }),
+    initialPageParam: null as string | null,
+    queryFn: ({ signal, pageParam }) =>
+      api<CursorPage<Project>>(
+        `/projects${pageParam ? `?cursor=${encodeURIComponent(pageParam)}` : ''}`,
+        { signal },
+      ),
+    getNextPageParam: (page) => page.nextCursor,
   });
-  const projects =
-    query.data?.items.filter((project) => project.status === tab) ?? [];
+  const allProjects = query.data?.pages.flatMap((page) => page.items) ?? [];
+  const projects = allProjects.filter((project) => project.status === tab);
   return (
     <main className="content">
+      {location.state?.notice && <Notice>{location.state.notice}</Notice>}
       <div className="page-heading">
         <div>
           <h1>Your projects</h1>
-          <p>A clear view of the work you're doing together.</p>
         </div>
         <button className="button primary" onClick={() => setCreating(true)}>
           <Plus size={18} />
           New project
         </button>
       </div>
+      <TrialControls />
       <div className="tabs" role="group" aria-label="Project status">
         {(['active', 'archived'] as const).map((value) => (
           <button
@@ -40,8 +49,8 @@ export function ProjectsPage() {
           >
             {value === 'active' ? 'Active' : 'Archived'}
             <span>
-              {query.data?.items.filter((project) => project.status === value)
-                .length ?? 0}
+              {allProjects.filter((project) => project.status === value).length}
+              {query.hasNextPage ? '+' : ''}
             </span>
           </button>
         ))}
@@ -54,26 +63,26 @@ export function ProjectsPage() {
         <div className="empty">
           <FolderKanban size={32} />
           <h2>
-            {tab === 'active'
-              ? 'A fresh start for your next project'
-              : 'No archived projects'}
+            {query.hasNextPage
+              ? `No ${tab} projects in the loaded results`
+              : tab === 'active'
+                ? 'No active projects'
+                : 'No archived projects'}
           </h2>
-          <p>
-            {tab === 'active'
-              ? 'Create a project, add your first task, and give your work a home.'
-              : 'Archived projects will appear here.'}
-          </p>
-          {tab === 'active' && (
+          {query.hasNextPage && (
+            <p>Load more projects to check the next page.</p>
+          )}
+          {tab === 'active' && !query.hasNextPage && (
             <button
               className="button primary"
               onClick={() => setCreating(true)}
             >
               <Plus size={16} />
-              Create your first project
+              Create project
             </button>
           )}
           <Link to="/demo" className="text-link">
-            Explore a sample project
+            View sample board
           </Link>
         </div>
       ) : (
@@ -91,10 +100,13 @@ export function ProjectsPage() {
                 <span className="badge">{project.role}</span>
               </div>
               <h2>{project.name}</h2>
-              <p>
-                {project.description ||
-                  'A new space to make progress together.'}
-              </p>
+              {project.isTrial && (
+                <small className="badge">
+                  Trial · expires{' '}
+                  {new Date(project.expiresAt!).toLocaleDateString('en')}
+                </small>
+              )}
+              {project.description && <p>{project.description}</p>}
               <div className="project-card-footer">
                 {project.status === 'active' ? 'Open board' : 'View project'}
                 <span>
@@ -106,6 +118,17 @@ export function ProjectsPage() {
               </div>
             </Link>
           ))}
+        </div>
+      )}
+      {query.hasNextPage && (
+        <div className="dialog-actions">
+          <button
+            className="button"
+            disabled={query.isFetchingNextPage}
+            onClick={() => void query.fetchNextPage()}
+          >
+            {query.isFetchingNextPage ? 'Loading…' : 'Load more projects'}
+          </button>
         </div>
       )}
       {creating && (

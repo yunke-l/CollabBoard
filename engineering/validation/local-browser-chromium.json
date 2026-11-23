@@ -1,0 +1,32 @@
+{
+  "date": "2026-11-19T21:52:56.946Z",
+  "engine": "chromium",
+  "version": "158.0.8127.36",
+  "scope": "Local PostgreSQL and local identity/file/SSE adapters; no AWS",
+  "desktopViewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "mobileViewport": {
+    "width": 390,
+    "height": 844
+  },
+  "passed": true,
+  "measurements": {
+    "onboardingMs": 687
+  },
+  "workflows": [
+    "invitations and quotas",
+    "task edits and conflicts",
+    "movement and keyboard ordering",
+    "notifications and read retries",
+    "comments and activity",
+    "lifecycle and ownership",
+    "offline drafts and revocation",
+    "private attachments and live hints",
+    "trial reset and cleanup",
+    "500-task board",
+    "email identity and session recovery",
+    "mobile layout and themes"
+  ]
+}

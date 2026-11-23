@@ -6,50 +6,106 @@ import {
   type ReactNode,
 } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { User } from '@collabboard/contracts';
-import { api, setAccessToken } from '../../shared/api/client';
+import type { AuthSession, User } from '@collabboard/contracts';
+import {
+  api,
+  getAccessToken,
+  refreshAccess,
+  setClientSession,
+} from '../../shared/api/client';
 
-type Session = { user: User; expiresAt: string; accessToken: string };
 const Context = createContext<{
   user: User | null;
+  ready: boolean;
   signIn: (userId: string) => Promise<void>;
+  signInWithEmail: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 } | null>(null);
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const queryClient = useQueryClient();
-  const clear = () => {
-    setAccessToken(null);
+  const [session, setSession] = useState<AuthSession | null>(null);
+  const [ready, setReady] = useState(false);
+  const client = useQueryClient();
+  function clear() {
+    setClientSession(null);
     setSession(null);
-    queryClient.clear();
-  };
+    client.clear();
+  }
+  function establish(next: AuthSession) {
+    client.clear();
+    setClientSession(next);
+    setSession(next);
+    setReady(true);
+  }
+  useEffect(() => {
+    let active = true;
+    const refreshed = (event: Event) => {
+      const next = (event as CustomEvent<AuthSession>).detail;
+      if (next.accessToken === getAccessToken()) {
+        setSession(next);
+        setReady(true);
+      }
+    };
+    window.addEventListener('collabboard:session-expired', clear);
+    window.addEventListener('collabboard:session-refreshed', refreshed);
+    void refreshAccess().finally(() => {
+      if (active) setReady(true);
+    });
+    return () => {
+      active = false;
+      window.removeEventListener('collabboard:session-expired', clear);
+      window.removeEventListener('collabboard:session-refreshed', refreshed);
+    };
+  }, [client]);
   useEffect(() => {
     if (!session) return;
-    const timeout = window.setTimeout(
-      clear,
-      Math.max(0, new Date(session.expiresAt).getTime() - Date.now()),
+    const timer = window.setTimeout(
+      () => {
+        void refreshAccess().then((next) => {
+          if (
+            !next &&
+            session.accessToken === getAccessToken() &&
+            navigator.onLine &&
+            Date.now() >= new Date(session.expiresAt).getTime()
+          )
+            clear();
+        });
+      },
+      Math.max(
+        1000,
+        new Date(session.expiresAt).getTime() - Date.now() - 60000,
+      ),
     );
-    return () => window.clearTimeout(timeout);
-  }, [session]); // Session data stays in memory and expires with its server token.
+    const reconnect = () => {
+      void refreshAccess();
+    };
+    window.addEventListener('online', reconnect);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('online', reconnect);
+    };
+  }, [session]);
   return (
     <Context.Provider
       value={{
         user: session?.user ?? null,
-        signIn: async (userId) => {
-          const next = await api<Session>('/auth/local-session', {
-            method: 'POST',
-            body: { userId },
-          });
-          queryClient.clear();
-          setAccessToken(next.accessToken);
-          setSession(next);
-        },
+        ready,
+        signIn: async (userId) =>
+          establish(
+            await api<AuthSession>('/auth/local-session', {
+              method: 'POST',
+              body: { userId },
+            }),
+          ),
+        signInWithEmail: async (email, password) =>
+          establish(
+            await api<AuthSession>('/auth/sign-in', {
+              method: 'POST',
+              body: { email, password },
+            }),
+          ),
         signOut: async () => {
-          try {
-            await api('/auth/session', { method: 'DELETE' });
-          } finally {
-            clear();
-          }
+          await api('/auth/session', { method: 'DELETE' });
+          clear();
         },
       }}
     >

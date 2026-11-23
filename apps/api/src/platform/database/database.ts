@@ -1,9 +1,9 @@
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, BeforeApplicationShutdown } from '@nestjs/common';
 import pg from 'pg';
 import { readEnvironment } from '../../config/environment.js';
 
 @Injectable()
-export class Database implements OnModuleDestroy {
+export class Database implements BeforeApplicationShutdown {
   readonly pool = new pg.Pool({
     connectionString: readEnvironment().databaseUrl,
     connectionTimeoutMillis: 3000,
@@ -26,7 +26,7 @@ export class Database implements OnModuleDestroy {
       client.release();
     }
   }
-  async onModuleDestroy() {
+  async beforeApplicationShutdown() {
     await this.pool.end();
   }
 }

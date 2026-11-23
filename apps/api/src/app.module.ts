@@ -7,16 +7,45 @@ import {
   Module,
   Post,
   Req,
+  Res,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { Database } from './platform/database/database.js';
-import { LocalIdentityProvider } from './modules/identity/identity.service.js';
+import {
+  LocalIdentityProvider,
+  refreshCookie,
+  setRefreshCookie,
+} from './modules/identity/identity.service.js';
+import { LocalAccounts } from './adapters/identity/local-accounts.js';
+import { IdentityController } from './modules/identity/identity.controller.js';
 import { localIdentities } from './adapters/identity/local-identities.js';
 import { ProjectsService } from './modules/projects/projects.service.js';
 import { ProjectsController } from './modules/projects/projects.controller.js';
+import { LifecycleController } from './modules/projects/lifecycle.controller.js';
+import {
+  InvitationsController,
+  MembersController,
+  TasksController,
+} from './modules/projects/collaboration.controller.js';
 import { sampleBoard } from './modules/demo/sample.js';
+import { NotificationsController } from './modules/notifications/notifications.controller.js';
+import { NotificationsService } from './modules/notifications/notifications.service.js';
+import { DiscussionController } from './modules/discussion/discussion.controller.js';
+import { DiscussionService } from './modules/discussion/discussion.service.js';
+import { FilesController } from './modules/files/files.controller.js';
+import { FilesService } from './modules/files/files.service.js';
+import { TrialsController } from './modules/trials/trials.controller.js';
+import { TrialsService } from './modules/trials/trials.service.js';
+import { MaintenanceService } from './platform/jobs/maintenance.service.js';
+import { LocalPrivateStorage } from './platform/storage/private-storage.js';
+import { EventsController } from './modules/events/events.controller.js';
+import { DispatcherService } from './modules/events/dispatcher.service.js';
+import {
+  HINT_TRANSPORT,
+  LocalHintTransport,
+} from './modules/events/hint-transport.js';
 
 @ApiTags('Foundation')
 @Controller()
@@ -39,7 +68,7 @@ class FoundationController {
   @ApiOperation({ summary: 'Database connectivity and schema readiness' })
   async ready() {
     try {
-      await this.database.pool.query('SELECT 1 FROM users LIMIT 1');
+      await this.database.pool.query('SELECT 1 FROM rate_limits LIMIT 1');
       return { status: 'ready' };
     } catch {
       throw new ServiceUnavailableException(
@@ -74,8 +103,15 @@ class FoundationController {
       properties: { userId: { type: 'string', format: 'uuid' } },
     },
   })
-  session(@Body() body: { userId?: unknown } | null) {
-    return this.identity.createSession(body?.userId);
+  session(
+    @Body() body: { userId?: unknown } | null,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const { refreshToken, ...session } = this.identity.createSession(
+      body?.userId,
+    );
+    setRefreshCookie(response, refreshToken);
+    return session;
   }
 
   @Get('me')
@@ -86,14 +122,49 @@ class FoundationController {
 
   @Delete('auth/session')
   @ApiBearerAuth()
-  signOut(@Req() request: Request) {
+  signOut(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
     this.identity.signOut(request);
+    response.clearCookie(refreshCookie, {
+      path: '/api/auth',
+      httpOnly: true,
+      sameSite: 'strict',
+    });
     return { signedOut: true };
   }
 }
 
 @Module({
-  controllers: [FoundationController, ProjectsController],
-  providers: [Database, LocalIdentityProvider, ProjectsService],
+  controllers: [
+    FoundationController,
+    IdentityController,
+    ProjectsController,
+    LifecycleController,
+    InvitationsController,
+    MembersController,
+    TasksController,
+    NotificationsController,
+    DiscussionController,
+    FilesController,
+    TrialsController,
+    EventsController,
+  ],
+  providers: [
+    Database,
+    LocalIdentityProvider,
+    LocalAccounts,
+    ProjectsService,
+    NotificationsService,
+    DiscussionService,
+    LocalPrivateStorage,
+    FilesService,
+    TrialsService,
+    MaintenanceService,
+    LocalHintTransport,
+    { provide: HINT_TRANSPORT, useExisting: LocalHintTransport },
+    DispatcherService,
+  ],
 })
 export class AppModule {}

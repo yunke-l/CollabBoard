@@ -1,118 +1,199 @@
 import { Link } from 'react-router';
-import { Check, Columns3, LockKeyhole, Users } from 'lucide-react';
+import {
+  CalendarDays,
+  Check,
+  CircleCheck,
+  CircleDashed,
+  Columns3,
+  MessageSquare,
+  Paperclip,
+} from 'lucide-react';
+import { useSession } from '../../app/providers/session';
+import { Avatar } from '../../shared/ui/common';
 
-export function EntryPage() {
+function CollaborationScene() {
   return (
-    <main>
-      <section className="hero">
-        <span className="eyebrow">
-          <span className="mini-mark" />A shared space for focused teams
-        </span>
-        <h1>
-          Make progress.
-          <br />
-          <span>Make it together.</span>
-        </h1>
-        <p>
-          From the first idea to the final handoff, keep your team's tasks,
-          conversations, and next steps in one clear view.
-        </p>
-        <div className="hero-actions">
-          <Link to="/sign-in" className="button primary">
-            Open CollabBoard
-          </Link>
-          <Link to="/demo" className="button">
-            Explore the sample board
-          </Link>
+    <figure
+      className="entry-scene"
+      aria-label="An example of project collaboration"
+    >
+      <div className="entry-scene-canvas">
+        <div className="entry-scene-heading">
+          <div className="entry-scene-project">
+            <span className="entry-project-icon">
+              <Columns3 size={19} aria-hidden="true" />
+            </span>
+            <span>Launch day</span>
+          </div>
+          <div className="avatar-group" aria-label="The project team">
+            <Avatar name="Jamie Lee" />
+            <Avatar name="Alex Morgan" />
+            <Avatar name="Sam Kim" />
+          </div>
         </div>
-        <span className="hero-note">
-          Built for small teams. Designed to keep things simple.
-        </span>
-      </section>
-      <section
-        className="entry-preview"
-        aria-label="A preview of the task board"
-      >
-        <div className="preview-heading">
-          <span className="project-symbol">
-            <Columns3 size={21} />
+
+        <div className="entry-scene-task">
+          <div className="entry-task-topline">
+            <span className="entry-task-reference">CB-018</span>
+            <span className="entry-task-status">
+              <CircleDashed size={14} aria-hidden="true" />
+              In progress
+            </span>
+          </div>
+          <h2>Bring the launch page to life</h2>
+          <p>A clear first impression, down to the last detail.</p>
+          <dl className="entry-task-details">
+            <div>
+              <dt>Assigned to</dt>
+              <dd>
+                <Avatar name="Jamie Lee" />
+                Jamie Lee
+              </dd>
+            </div>
+            <div>
+              <dt>Due date</dt>
+              <dd>
+                <CalendarDays size={17} aria-hidden="true" />
+                Friday
+              </dd>
+            </div>
+          </dl>
+          <div className="entry-task-context">
+            <span>
+              <MessageSquare size={15} aria-hidden="true" />2 comments
+            </span>
+            <span>
+              <Paperclip size={15} aria-hidden="true" />1 attachment
+            </span>
+          </div>
+        </div>
+
+        <div className="entry-scene-comment">
+          <Avatar name="Alex Morgan" />
+          <div>
+            <strong>Alex Morgan</strong>
+            <p>Ready for your review. The latest design is attached!</p>
+            <span className="entry-scene-file">
+              <Paperclip size={14} aria-hidden="true" />
+              launch-design.fig
+            </span>
+          </div>
+        </div>
+
+        <div className="entry-scene-completed">
+          <span className="entry-completed-icon">
+            <Check size={17} aria-hidden="true" />
           </span>
           <div>
-            <strong>Website launch</strong>
-            <p>A thoughtful refresh, from first idea to launch day.</p>
+            <strong>Visual direction approved</strong>
           </div>
-          <span className="badge">Sample project</span>
         </div>
-        <div className="preview-columns">
-          {[
-            [
-              'To Do',
-              ['Map the onboarding journey', 'Write the product introduction'],
-            ],
-            [
-              'In Progress',
-              [
-                'Build the shared component library',
-                'Polish the project board layout',
-              ],
-            ],
-            [
-              'Done',
-              ['Define the visual direction', 'Document project permissions'],
-            ],
-          ].map(([title, items]) => (
-            <div className="preview-column" key={title as string}>
-              <h3>
-                {title as string}
-                <span>2</span>
-              </h3>
-              {(items as string[]).map((item, index) => (
-                <div className="preview-card" key={item}>
-                  <span className="task-reference">CB-0{24 - index}</span>
-                  <h4>{item}</h4>
-                  <span className="preview-meta">
-                    {title === 'Done' ? (
-                      <>
-                        <Check size={14} />
-                        Completed
-                      </>
-                    ) : (
-                      'One clear next step'
-                    )}
-                  </span>
-                </div>
-              ))}
+      </div>
+    </figure>
+  );
+}
+
+export function EntryPage() {
+  const { user } = useSession();
+  const startPath = user ? '/projects' : '/sign-in';
+
+  return (
+    <main className="entry-page">
+      <section className="entry-hero" aria-labelledby="entry-title">
+        <div className="entry-hero-copy">
+          <h1 id="entry-title">
+            Everyone knows <span>what’s next.</span>
+          </h1>
+          <p className="entry-hero-description">
+            Keep tasks, owners, and conversations together on one shared board.
+            Less chasing updates. More moving forward.
+          </p>
+          <div className="entry-hero-actions">
+            <Link to={startPath} className="button primary">
+              Start a project
+            </Link>
+            <Link to="/demo" className="button">
+              View sample board
+            </Link>
+          </div>
+        </div>
+        <CollaborationScene />
+      </section>
+
+      <section
+        className="entry-benefits"
+        aria-labelledby="entry-benefits-title"
+      >
+        <div className="entry-section-heading">
+          <h2 id="entry-benefits-title">
+            Less “where are we?”
+            <br />
+            More “here we go.”
+          </h2>
+        </div>
+        <div className="entry-benefit-grid">
+          <article className="entry-benefit">
+            <div className="entry-benefit-example entry-example-tasks">
+              <div>
+                <CircleDashed size={18} aria-hidden="true" />
+                <span>Review the launch copy</span>
+                <span className="entry-example-label">In progress</span>
+              </div>
+              <div>
+                <CircleCheck size={18} aria-hidden="true" />
+                <span>Define the visual direction</span>
+                <Check size={15} aria-label="Completed" />
+              </div>
             </div>
-          ))}
+            <h3>See the next step.</h3>
+            <p>
+              From to-do to done, keep the plan in view and know what needs your
+              attention.
+            </p>
+          </article>
+          <article className="entry-benefit">
+            <div className="entry-benefit-example entry-example-owner">
+              <Avatar name="Jamie Lee" />
+              <div>
+                <strong>Jamie Lee</strong>
+                <span>Taking the lead on design</span>
+              </div>
+              <span className="entry-owner-label">Assigned</span>
+            </div>
+            <h3>Give every task an owner.</h3>
+            <p>
+              Make responsibilities clear, so everyone knows where they can make
+              a difference.
+            </p>
+          </article>
+          <article className="entry-benefit">
+            <div className="entry-benefit-example entry-example-context">
+              <div>
+                <MessageSquare size={17} aria-hidden="true" />
+                <span>“The latest version is right here.”</span>
+              </div>
+              <span className="entry-example-attachment">
+                <Paperclip size={15} aria-hidden="true" />
+                launch-assets.zip
+              </span>
+            </div>
+            <h3>Keep the context close.</h3>
+            <p>
+              Keep comments and files with the task, so the next person can pick
+              up right where you left off.
+            </p>
+          </article>
         </div>
       </section>
-      <section className="feature-strip" aria-label="Why CollabBoard">
-        {[
-          [
-            Columns3,
-            'See the work clearly',
-            'Three simple columns. A shared understanding of what comes next.',
-          ],
-          [
-            Users,
-            'Stay on the same page',
-            'Give every task context, ownership, and room for conversation.',
-          ],
-          [
-            LockKeyhole,
-            'Share with confidence',
-            'Project roles keep the right people in control of the right work.',
-          ],
-        ].map(([Icon, title, copy]) => {
-          const Symbol = Icon as typeof Columns3;
-          return (
-            <article key={title as string}>
-              <Symbol size={22} />
-              <h2>{title as string}</h2>
-              <p>{copy as string}</p>
-            </article>
-          );
-        })}
+
+      <section className="entry-start" aria-labelledby="entry-start-title">
+        <div>
+          <h2 id="entry-start-title">Your next project starts here.</h2>
+          <p>Create a project, invite your team, and move work forward.</p>
+        </div>
+        <Link to={startPath} className="button primary">
+          Start a project
+        </Link>
       </section>
     </main>
   );

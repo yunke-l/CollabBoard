@@ -12,5 +12,6 @@ export default defineConfig({
   test: {
     include: ['packages/**/*.test.ts', 'tests/**/*.test.ts'],
     testTimeout: 20000,
+    hookTimeout: 30000,
   },
 });

@@ -21,6 +21,7 @@
   --warning-ink: #976000;
   --error-ink: #c53737;
   --info-ink: #386ac1;
+  --task-hover: #eaf4ff;
   --shadow: 0 3px 14px rgb(28 32 52 / 3%);
 }
 [data-theme='dark'] {
@@ -45,5 +46,6 @@
   --warning-ink: #fbbf24;
   --error-ink: #fb7185;
   --info-ink: #7ba7f7;
+  --task-hover: #21344a;
   --shadow: none;
 }

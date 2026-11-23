@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { quotaSchema } from '@collabboard/contracts';
 
 @Catch()
 export class ApiErrorFilter implements ExceptionFilter {
@@ -40,6 +41,7 @@ export class ApiErrorFilter implements ExceptionFilter {
       404: 'NOT_FOUND',
       409: 'CONFLICT',
       413: 'PAYLOAD_TOO_LARGE',
+      429: 'RATE_LIMITED',
       503: 'SERVICE_UNAVAILABLE',
     };
     if (status >= 500)
@@ -50,6 +52,13 @@ export class ApiErrorFilter implements ExceptionFilter {
           code: defaults[status] ?? 'INTERNAL_ERROR',
         }),
       );
+    const retryAfterSeconds =
+      typeof detail.retryAfterSeconds === 'number' &&
+      Number.isInteger(detail.retryAfterSeconds) &&
+      detail.retryAfterSeconds > 0
+        ? detail.retryAfterSeconds
+        : undefined;
+    if (retryAfterSeconds) response.setHeader('Retry-After', retryAfterSeconds);
     response.status(status).json({
       code: detail.code ?? defaults[status] ?? 'INTERNAL_ERROR',
       message:
@@ -62,7 +71,11 @@ export class ApiErrorFilter implements ExceptionFilter {
                 ? 'The request body is invalid.'
                 : 'The request could not be completed.')),
       requestId,
+      ...(retryAfterSeconds ? { retryAfterSeconds } : {}),
       ...(detail.fieldErrors ? { fieldErrors: detail.fieldErrors } : {}),
+      ...(quotaSchema.safeParse(detail.quota).success
+        ? { quota: quotaSchema.parse(detail.quota) }
+        : {}),
     });
   }
 }

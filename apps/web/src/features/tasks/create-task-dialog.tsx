@@ -6,8 +6,9 @@ import {
   statusLabels,
   taskStatuses,
   type TaskStatus,
+  type ProjectMember,
 } from '@collabboard/contracts';
-import { api } from '../../shared/api/client';
+import { api, ApiError } from '../../shared/api/client';
 import { Dialog } from '../../shared/ui/common';
 import { useOnline } from '../../shared/lib/use-online';
 
@@ -15,16 +16,21 @@ export function CreateTaskDialog({
   projectId,
   status: initialStatus,
   onClose,
+  members,
+  canWrite,
 }: {
   projectId: string;
   status: TaskStatus;
   onClose: () => void;
+  members: ProjectMember[];
+  canWrite: boolean;
 }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<TaskStatus>(initialStatus);
   const [priority, setPriority] = useState('medium');
   const [dueDate, setDueDate] = useState('');
+  const [assigneeId, setAssigneeId] = useState('');
   const [error, setError] = useState('');
   const attempt = useRef<{ content: string; requestId: string } | null>(null);
   const online = useOnline();
@@ -34,11 +40,15 @@ export function CreateTaskDialog({
       api(`/projects/${projectId}/tasks`, { method: 'POST', body }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['board', projectId] });
+      await queryClient.invalidateQueries({
+        queryKey: ['activity', projectId],
+      });
       onClose();
     },
   });
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (mutation.isPending || !online || !canWrite) return;
     setError('');
     const values = {
       title: title.trim(),
@@ -46,6 +56,7 @@ export function CreateTaskDialog({
       status,
       priority,
       dueDate: dueDate || null,
+      assigneeId: assigneeId || null,
     };
     const content = JSON.stringify(values);
     if (attempt.current?.content !== content)
@@ -66,17 +77,43 @@ export function CreateTaskDialog({
           ? failure.message
           : 'Unable to create the task.',
       );
+      if (
+        failure instanceof ApiError &&
+        ([403, 404].includes(failure.status) ||
+          failure.detail.code === 'PROJECT_ARCHIVED')
+      ) {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['board', projectId] }),
+          queryClient.invalidateQueries({ queryKey: ['members', projectId] }),
+        ]);
+      }
     }
   }
   return (
     <Dialog
       title="Create a task"
+      busy={mutation.isPending}
       onClose={() => {
         if (!mutation.isPending) onClose();
       }}
     >
-      <p>Turn the next step into something you can move forward.</p>
       <form onSubmit={(event) => void submit(event)}>
+        <label className="field">
+          Assignee
+          <select
+            value={assigneeId}
+            onChange={(event) => setAssigneeId(event.target.value)}
+          >
+            <option value="">Unassigned</option>
+            {members
+              .filter((member) => member.role !== 'Viewer')
+              .map((member) => (
+                <option value={member.id} key={member.id}>
+                  {member.displayName}
+                </option>
+              ))}
+          </select>
+        </label>
         <label className="field">
           Task title
           <input
@@ -84,7 +121,6 @@ export function CreateTaskDialog({
             required
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            placeholder="What needs to happen?"
             aria-describedby={error ? 'task-error' : undefined}
           />
         </label>
@@ -151,7 +187,7 @@ export function CreateTaskDialog({
           </button>
           <button
             className="button primary"
-            disabled={mutation.isPending || !online}
+            disabled={mutation.isPending || !online || !canWrite}
           >
             {mutation.isPending ? 'Creating…' : 'Create task'}
           </button>

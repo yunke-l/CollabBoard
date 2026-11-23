@@ -1,0 +1,35 @@
+name: Local performance and recovery
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PERF_REPORT_PATH: .local/performance-${{ github.run_id }}-${{ github.run_attempt }}.json
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: pnpm/action-setup@v6.1.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:up
+      - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Measure isolated loopback services
+        run: pnpm test:performance
+      - name: Show measured evidence
+        if: always()
+        run: |
+          if [ -f "$PERF_REPORT_PATH" ]; then
+            cat "$PERF_REPORT_PATH"
+          else
+            echo "This run did not produce a performance report."
+          fi
+      - name: Stop local PostgreSQL
+        if: always()
+        run: pnpm db:down

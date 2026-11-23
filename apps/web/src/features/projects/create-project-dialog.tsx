@@ -57,11 +57,11 @@ export function CreateProjectDialog({
   return (
     <Dialog
       title="Create a project"
+      busy={mutation.isPending}
       onClose={() => {
         if (!mutation.isPending) onClose();
       }}
     >
-      <p>A shared space for your team's next great idea.</p>
       <form onSubmit={(event) => void submit(event)}>
         <label className="field">
           Project name
@@ -80,7 +80,6 @@ export function CreateProjectDialog({
             value={description}
             onChange={(event) => setDescription(event.target.value)}
             rows={3}
-            placeholder="What are you working toward?"
           />
         </label>
         {error && (

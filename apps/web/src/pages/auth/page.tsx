@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import type { User } from '@collabboard/contracts';
@@ -8,17 +8,45 @@ import {
   Brand,
   ErrorState,
   LoadingState,
-  Notice,
   ThemeSwitch,
 } from '../../shared/ui/common';
 import { useSession } from '../../app/providers/session';
 
 export function SignInPage() {
-  const { signIn } = useSession();
+  const { signIn, signInWithEmail } = useSession();
   const navigate = useNavigate();
   const [search] = useSearchParams();
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  function enter() {
+    const destination = search.get('returnTo') ?? '/projects';
+    navigate(
+      (/^\/projects(?:\/|\?|$)/.test(destination) ||
+        destination === '/invite') &&
+        !destination.includes('\\')
+        ? destination
+        : '/projects',
+      { replace: true },
+    );
+  }
+  async function emailSignIn(event: FormEvent) {
+    event.preventDefault();
+    if (pending) return;
+    setPending('email');
+    setError('');
+    try {
+      await signInWithEmail(email, password);
+      enter();
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : 'Unable to sign in.',
+      );
+    } finally {
+      setPending(null);
+    }
+  }
   const identities = useQuery({
     queryKey: ['local-identities'],
     queryFn: ({ signal }) => api<User[]>('/auth/local-identities', { signal }),
@@ -30,7 +58,8 @@ export function SignInPage() {
       await signIn(id);
       const destination = search.get('returnTo') ?? '/projects';
       navigate(
-        /^\/projects(?:\/|\?|$)/.test(destination) &&
+        (/^\/projects(?:\/|\?|$)/.test(destination) ||
+          destination === '/invite') &&
           !destination.includes('\\')
           ? destination
           : '/projects',
@@ -48,37 +77,58 @@ export function SignInPage() {
   }
   return (
     <main className="auth-layout">
-      <section className="auth-story">
-        <Brand />
-        <div>
-          <span className="eyebrow">Clarity starts here</span>
-          <h1>
-            Good work happens
-            <br />
-            when we work together.
-          </h1>
-          <p>
-            Keep the plan clear, the conversation close,
-            <br />
-            and the whole team moving forward.
-          </p>
-        </div>
-        <span>One board. A shared direction.</span>
-      </section>
       <section className="auth-main">
         <Link to="/" className="auth-back text-link">
           Back to home
         </Link>
         <div className="auth-form">
-          <div className="mobile-only">
-            <Brand />
+          <Brand />
+          <h1>Sign in</h1>
+          <form
+            onSubmit={(event) => void emailSignIn(event)}
+            className="email-sign-in"
+          >
+            <label className="field">
+              Email
+              <input
+                aria-label="Email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+              />
+            </label>
+            <label className="field">
+              Password
+              <input
+                aria-label="Password"
+                type="password"
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+            </label>
+            <button className="button primary" disabled={pending !== null}>
+              {pending === 'email' ? 'Signing in…' : 'Sign in with email'}
+            </button>
+          </form>
+          <div className="auth-links">
+            <Link
+              className="text-link"
+              to={`/sign-up${search.get('returnTo') ? `?returnTo=${encodeURIComponent(search.get('returnTo')!)}` : ''}`}
+            >
+              Create account
+            </Link>
+            <Link className="text-link" to="/verify-email">
+              Verify email
+            </Link>
+            <Link className="text-link" to="/recover-password">
+              Forgot password?
+            </Link>
           </div>
-          <h1>Welcome to CollabBoard</h1>
-          <p>Choose a local development account to get started.</p>
-          <Notice>
-            This development build uses synthetic accounts without passwords.
-            Sessions stay in memory and expire after one hour.
-          </Notice>
+          <h2>Development shortcuts</h2>
           {identities.isPending ? (
             <LoadingState />
           ) : identities.isError ? (
@@ -95,7 +145,7 @@ export function SignInPage() {
                   disabled={pending !== null}
                   onClick={() => void select(user.id)}
                 >
-                  <Avatar name={user.displayName} />
+                  <Avatar name={user.displayName} userId={user.id} />
                   <span>
                     <strong>{user.displayName}</strong>
                     <small>{user.email}</small>
@@ -113,7 +163,7 @@ export function SignInPage() {
             </p>
           )}
           <Link to="/demo" className="text-link auth-sample">
-            Just looking? Explore the sample board
+            View sample board
           </Link>
         </div>
         <ThemeSwitch />
