@@ -1,4 +1,5 @@
 import { useRef, useState, type FormEvent } from 'react';
+import { Download, Paperclip, Trash2 } from 'lucide-react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import {
   initializeAttachmentSchema,
@@ -14,6 +15,7 @@ import { api, ApiError, authorizedFetch } from '../../shared/api/client';
 import { useOnline } from '../../shared/lib/use-online';
 import { ErrorState, LoadingState, Notice } from '../../shared/ui/common';
 import { useProjectAccess } from '../projects/use-project-access';
+import { AttachmentLabel } from './attachment-label';
 
 type Attempt = {
   file: File;
@@ -30,6 +32,13 @@ const typeByExtension: Record<string, string> = {
   pdf: 'application/pdf',
   txt: 'text/plain',
 };
+function fileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  const mib = bytes >= 1024 * 1024;
+  const size = bytes / (mib ? 1024 * 1024 : 1024);
+  return `${size.toLocaleString('en', { maximumFractionDigits: 1 })} ${mib ? 'MiB' : 'KiB'}`;
+}
+
 export function AttachmentSection({
   project,
   task,
@@ -45,6 +54,7 @@ export function AttachmentSection({
   const online = useOnline();
   const client = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
+  const picker = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState(false);
   const [stage, setStage] = useState('');
   const [error, setError] = useState('');
@@ -147,6 +157,7 @@ export function AttachmentSection({
       });
       attempt.current = null;
       setFile(null);
+      if (picker.current) picker.current.value = '';
     } catch (failure) {
       setError(
         failure instanceof Error
@@ -226,9 +237,6 @@ export function AttachmentSection({
       <h2>
         Attachments <span className="muted">({task.attachmentCount})</span>
       </h2>
-      <p className="muted">
-        JPG, PNG, WebP, PDF, or TXT · up to 10 MiB each · 5 files per task
-      </p>
       {!online && (
         <Notice>
           You are offline. Your selected file is kept; uploads and downloads are
@@ -253,11 +261,15 @@ export function AttachmentSection({
           className="attachment-upload"
           onSubmit={(event) => void upload(event)}
         >
-          <label className="field">
-            Attachment file
+          <label className="attachment-picker">
+            <Paperclip size={17} aria-hidden="true" />
+            {file ? 'Change file' : 'Choose file'}
             <input
+              ref={picker}
+              className="sr-only"
               type="file"
               aria-label="Attachment file"
+              aria-describedby="attachment-limits"
               accept=".jpg,.jpeg,.png,.webp,.pdf,.txt"
               disabled={pending || !canUpload}
               onChange={(event) => {
@@ -266,25 +278,24 @@ export function AttachmentSection({
               }}
             />
           </label>
+          <small id="attachment-limits">
+            JPG, PNG, WebP, PDF or TXT · up to 10 MiB each · 5 files per task
+          </small>
           {file && (
-            <p className="plain-text">
-              {file.name} ·{' '}
-              {(file.size / 1024).toLocaleString('en', {
-                maximumFractionDigits: 1,
-              })}{' '}
-              KiB
-            </p>
+            <div className="attachment-selection">
+              <AttachmentLabel name={file.name} detail={fileSize(file.size)} />
+              <button
+                className="button primary"
+                disabled={!canUpload || pending || disabled}
+              >
+                {stage
+                  ? stage
+                  : attempt.current?.file === file
+                    ? 'Retry upload'
+                    : 'Upload attachment'}
+              </button>
+            </div>
           )}
-          <button
-            className="button primary"
-            disabled={!file || !canUpload || pending || disabled}
-          >
-            {pending
-              ? stage
-              : attempt.current?.file === file
-                ? 'Retry upload'
-                : 'Upload attachment'}
-          </button>
         </form>
       )}
       {deleting && (
@@ -334,30 +345,30 @@ export function AttachmentSection({
           {items.length ? (
             <ul className="attachment-list">
               {items.map((item) => (
-                <li key={item.id}>
-                  <strong className="plain-text">{item.originalName}</strong>
-                  <small>
-                    {(item.sizeBytes / 1024).toLocaleString('en', {
-                      maximumFractionDigits: 1,
-                    })}{' '}
-                    KiB · {item.uploaderName}
-                    {!item.uploaderActive ? ' (left the project)' : ''}
-                  </small>
-                  <div className="comment-actions">
+                <li key={item.id} className="attachment-card">
+                  <AttachmentLabel
+                    name={item.originalName}
+                    detail={`${fileSize(item.sizeBytes)} · ${item.uploaderName}${item.uploaderActive ? '' : ' (left the project)'}`}
+                  />
+                  <div className="attachment-actions">
                     <button
-                      className="button"
+                      className="icon-button"
+                      title={`Download ${item.originalName}`}
+                      aria-label={`Download ${item.originalName}`}
                       disabled={!online}
                       onClick={() => void download(item)}
                     >
-                      Download {item.originalName}
+                      <Download size={17} aria-hidden="true" />
                     </button>
                     {canDelete(item) && (
                       <button
-                        className="button danger"
+                        className="icon-button attachment-delete"
+                        title={`Delete ${item.originalName}`}
+                        aria-label="Delete attachment"
                         disabled={pending || disabled}
                         onClick={() => setDeleting(item)}
                       >
-                        Delete attachment
+                        <Trash2 size={16} aria-hidden="true" />
                       </button>
                     )}
                   </div>

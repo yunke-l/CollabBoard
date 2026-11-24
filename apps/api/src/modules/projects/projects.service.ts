@@ -34,22 +34,20 @@ import { idempotent } from '../../platform/database/idempotency.js';
 import { recordChange } from '../../platform/database/changes.js';
 import { nextCursor, readPage } from '../../platform/http/pagination.js';
 import { quotaConflict } from '../../platform/observability/quota.js';
+import { populateSampleProject } from '../demo/populate-project.js';
 
-type ProjectRow = Omit<Project, 'createdAt' | 'expiresAt'> & {
+type ProjectRow = Omit<Project, 'createdAt'> & {
   createdAt: Date;
-  expiresAt: Date | null;
 };
 const projectFields =
-  'p.id, p.name, p.description, p.status, p.board_revision AS "boardRevision", p.created_at AS "createdAt", p.is_trial AS "isTrial", p.expires_at AS "expiresAt", m.role';
+  'p.id, p.name, p.description, p.status, p.board_revision AS "boardRevision", p.created_at AS "createdAt", m.role';
 const taskFields = `t.id, t.project_id AS "projectId", t.title, t.description, t.status, t.priority, t.position, t.version, t.due_date::text AS "dueDate", t.archived_at::text AS "archivedAt", t.assignee_id AS "assigneeId", (SELECT display_name FROM users WHERE id = t.assignee_id) AS "assigneeName", (SELECT count(*)::int FROM comments c WHERE c.task_id = t.id AND c.deleted_at IS NULL) AS "commentCount", (SELECT count(*)::int FROM attachments a WHERE a.task_id = t.id AND a.state = 'ready') AS "attachmentCount"`;
-const effectiveProjectStatus = `CASE WHEN p.expires_at <= clock_timestamp() THEN 'expired' ELSE p.status END`;
 const invitationFields = `id, project_id AS "projectId", email, role, CASE WHEN status = 'pending' AND expires_at <= now() THEN 'expired' ELSE status END AS status, expires_at::text AS "expiresAt"`;
 const tokenHash = (token: string) =>
   createHash('sha256').update(token).digest('hex');
 const projectView = (row: ProjectRow): Project => ({
   ...row,
   createdAt: new Date(row.createdAt).toISOString(),
-  expiresAt: row.expiresAt ? new Date(row.expiresAt).toISOString() : null,
 });
 const conflict = (code: string, message: string) =>
   new HttpException({ code, message }, 409);
@@ -66,7 +64,7 @@ export class ProjectsService {
     const scope = `projects:${userId}`;
     const { boundary } = readPage(cursor, limit, scope);
     const result = await this.database.pool.query<ProjectRow>(
-      `SELECT ${projectFields} FROM projects p JOIN project_members m ON m.project_id = p.id WHERE m.user_id = $1 AND p.status <> 'expired' AND (p.expires_at IS NULL OR p.expires_at > now()) AND ($2::timestamptz IS NULL OR (date_trunc('milliseconds', p.created_at), p.id) < ($2::timestamptz, $3::uuid)) ORDER BY date_trunc('milliseconds', p.created_at) DESC, p.id DESC LIMIT $4`,
+      `SELECT ${projectFields} FROM projects p JOIN project_members m ON m.project_id = p.id WHERE m.user_id = $1 AND p.status <> 'expired' AND ($2::timestamptz IS NULL OR (date_trunc('milliseconds', p.created_at), p.id) < ($2::timestamptz, $3::uuid)) ORDER BY date_trunc('milliseconds', p.created_at) DESC, p.id DESC LIMIT $4`,
       [userId, boundary?.at ?? null, boundary?.id ?? null, limit + 1],
     );
     const items = result.rows.slice(0, limit).map(projectView);
@@ -88,7 +86,7 @@ export class ProjectsService {
       );
       return idempotent(client, userId, 'create-project', input, async () => {
         const usage = await client.query<{ active: string; total: string }>(
-          "SELECT count(*) FILTER (WHERE status = 'active') AS active, count(*) AS total FROM projects WHERE owner_id = $1 AND is_trial = false",
+          "SELECT count(*) FILTER (WHERE status = 'active') AS active, count(*) AS total FROM projects WHERE owner_id = $1 AND status <> 'expired'",
           [userId],
         );
         const count = usage.rows[0]!;
@@ -111,8 +109,8 @@ export class ProjectsService {
         }
         const id = randomUUID();
         await client.query(
-          'INSERT INTO projects (id, owner_id, name, description) VALUES ($1, $2, $3, $4)',
-          [id, userId, input.name, input.description],
+          'INSERT INTO projects (id, owner_id, name, description, board_revision) VALUES ($1, $2, $3, $4, $5)',
+          [id, userId, input.name, input.description, input.fromSample ? 1 : 0],
         );
         await client.query(
           "INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, 'Owner')",
@@ -125,8 +123,9 @@ export class ProjectsService {
           null,
           'project.created',
           1,
-          0,
+          input.fromSample ? 1 : 0,
         );
+        if (input.fromSample) await populateSampleProject(client, id, userId);
         return this.project(client, userId, id);
       });
     });
@@ -515,7 +514,7 @@ export class ProjectsService {
 
   async previewInvitation(token: string) {
     const result = await this.database.pool.query<InvitationPreview>(
-      `SELECT p.name AS "projectName", i.role, CASE WHEN i.status = 'pending' AND i.expires_at <= now() THEN 'expired' ELSE i.status END AS status, i.expires_at::text AS "expiresAt", ${effectiveProjectStatus} AS "projectStatus", p.expires_at::text AS "trialExpiresAt" FROM invitations i JOIN projects p ON p.id = i.project_id WHERE i.token_hash = $1`,
+      `SELECT p.name AS "projectName", i.role, CASE WHEN i.status = 'pending' AND i.expires_at <= now() THEN 'expired' ELSE i.status END AS status, i.expires_at::text AS "expiresAt", p.status AS "projectStatus" FROM invitations i JOIN projects p ON p.id = i.project_id WHERE i.token_hash = $1`,
       [tokenHash(token)],
     );
     if (!result.rows[0])
@@ -533,7 +532,7 @@ export class ProjectsService {
         throw new NotFoundException('This invitation link is invalid.');
       const projectId = lookup.rows[0].project_id;
       const projects = await client.query<{ status: string }>(
-        `SELECT ${effectiveProjectStatus} AS status FROM (SELECT status, expires_at FROM projects WHERE id = $1 FOR UPDATE) p`,
+        `SELECT status FROM projects WHERE id = $1 FOR UPDATE`,
         [projectId],
       );
       const result = await client.query<
@@ -1068,22 +1067,12 @@ export class ProjectsService {
     projectId: string,
     incoming: boolean,
   ) {
-    const source = await client.query<{ is_trial: boolean }>(
-      'SELECT is_trial FROM projects WHERE id = $1',
-      [projectId],
-    );
-    const trial = source.rows[0]!.is_trial;
-    if (trial)
-      await client.query(
-        "UPDATE projects SET status = 'expired' WHERE owner_id = $1 AND is_trial AND status <> 'expired' AND expires_at <= now() AND id <> $2",
-        [userId, projectId],
-      );
     const usage = await client.query<{ active: number; total: number }>(
-      "SELECT count(*) FILTER (WHERE status = 'active')::int AS active, count(*)::int AS total FROM projects WHERE owner_id = $1 AND is_trial = $2 AND id <> $3",
-      [userId, trial, projectId],
+      "SELECT count(*) FILTER (WHERE status = 'active')::int AS active, count(*)::int AS total FROM projects WHERE owner_id = $1 AND status <> 'expired' AND id <> $2",
+      [userId, projectId],
     );
     const count = usage.rows[0]!;
-    if (incoming && !trial && count.total >= limits.totalProjects)
+    if (incoming && count.total >= limits.totalProjects)
       throw quotaConflict(
         'PROJECT_LIMIT_REACHED',
         'totalProjects',
@@ -1091,18 +1080,15 @@ export class ProjectsService {
         limits.totalProjects,
         'The new Owner has reached the total project limit. Choose another member; archiving does not release total quota.',
       );
-    const activeLimit = trial ? limits.activeTrials : limits.activeProjects;
-    if (count.active >= activeLimit)
+    if (count.active >= limits.activeProjects)
       throw quotaConflict(
         'PROJECT_LIMIT_REACHED',
-        trial ? 'activeTrials' : 'activeProjects',
+        'activeProjects',
         count.active,
-        activeLimit,
-        trial
-          ? 'The Owner already has an active trial project. Open the existing trial.'
-          : incoming
-            ? 'The new Owner must archive an owned project first, or choose another member.'
-            : 'Archive another owned project before restoring this one.',
+        limits.activeProjects,
+        incoming
+          ? 'The new Owner must archive an owned project first, or choose another member.'
+          : 'Archive another owned project before restoring this one.',
       );
   }
 
@@ -1199,7 +1185,7 @@ export class ProjectsService {
         id,
       ]);
     const result = await client.query<ProjectRow>(
-      `SELECT ${projectFields} FROM projects p JOIN project_members m ON m.project_id = p.id WHERE p.id = $1 AND m.user_id = $2 AND p.status <> 'expired' AND (p.expires_at IS NULL OR p.expires_at > now()) `,
+      `SELECT ${projectFields} FROM projects p JOIN project_members m ON m.project_id = p.id WHERE p.id = $1 AND m.user_id = $2 AND p.status <> 'expired' `,
       [id, userId],
     );
     if (!result.rows[0])

@@ -1,10 +1,15 @@
+import {
+  MemberSelect,
+  assigneeOptions,
+} from '../../features/projects/member-select';
+import { SelectControl } from '../../shared/ui/select-control';
+import { ChartNoAxesColumnIncreasing } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   priorities,
   projectCapabilities,
   statusLabels,
-  taskStatuses,
   updateTaskSchema,
   type MemberSnapshot,
   type Project,
@@ -40,19 +45,15 @@ export function TaskDetail({
   project,
   taskId,
   members,
+  membersFailed,
   onClose,
-  onMove,
   moving,
 }: {
   project: Project;
   taskId: string;
-  members: MemberSnapshot['members'];
+  members: MemberSnapshot['members'] | undefined;
+  membersFailed: boolean;
   onClose: () => void;
-  onMove: (
-    taskId: string,
-    status: Task['status'],
-    beforeTaskId: string | null,
-  ) => Promise<void>;
   moving: boolean;
 }) {
   const { user } = useSession();
@@ -226,48 +227,15 @@ export function TaskDetail({
                   <dd>{dueDateLabel(task) ?? 'No due date'}</dd>
                 </dl>
                 {canEdit && (
-                  <div className="task-detail-actions">
-                    <button
-                      className="button primary"
-                      onClick={() => edit(task)}
-                      disabled={
-                        moving ||
-                        archiving ||
-                        resourcePending ||
-                        query.isFetching
-                      }
-                    >
-                      Edit task
-                    </button>
-                    <label className="move-field">
-                      Move to
-                      <select
-                        aria-label="Move task to"
-                        value=""
-                        disabled={
-                          moving ||
-                          archiving ||
-                          resourcePending ||
-                          query.isFetching
-                        }
-                        onChange={(event) => {
-                          if (event.target.value)
-                            void onMove(
-                              task.id,
-                              event.target.value as Task['status'],
-                              null,
-                            );
-                        }}
-                      >
-                        <option value="">Choose column</option>
-                        {taskStatuses.map((status) => (
-                          <option value={status} key={status}>
-                            {statusLabels[status]}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
+                  <button
+                    className="button primary"
+                    onClick={() => edit(task)}
+                    disabled={
+                      moving || archiving || resourcePending || query.isFetching
+                    }
+                  >
+                    Edit task
+                  </button>
                 )}
                 <ArchiveTask
                   project={project}
@@ -380,7 +348,8 @@ export function TaskDetail({
                 </label>
                 <label className="field">
                   Priority
-                  <select
+                  <SelectControl
+                    icon={ChartNoAxesColumnIncreasing}
                     disabled={pending || project.role === 'Viewer'}
                     value={draft.priority}
                     onChange={(event) =>
@@ -392,36 +361,21 @@ export function TaskDetail({
                         {priority}
                       </option>
                     ))}
-                  </select>
+                  </SelectControl>
                 </label>
                 <label className="field">
                   Assignee
-                  <select
+                  <MemberSelect
                     disabled={pending || project.role === 'Viewer'}
                     value={draft.assigneeId}
                     onChange={(event) =>
                       setDraft({ ...draft, assigneeId: event.target.value })
                     }
-                  >
-                    <option value="">Unassigned</option>
-                    {members
-                      .filter((member) => member.role !== 'Viewer')
-                      .map((member) => (
-                        <option value={member.id} key={member.id}>
-                          {member.displayName}
-                        </option>
-                      ))}
-                    {draft.assigneeId &&
-                      !members.some(
-                        (member) =>
-                          member.id === draft.assigneeId &&
-                          member.role !== 'Viewer',
-                      ) && (
-                        <option value={draft.assigneeId} disabled>
-                          Previous assignee is no longer eligible
-                        </option>
-                      )}
-                  </select>
+                    options={assigneeOptions(members)}
+                    placeholder="Unassigned"
+                    emptyLabel="No assignees available"
+                    loadFailed={membersFailed}
+                  />
                 </label>
                 <label className="field">
                   Due date

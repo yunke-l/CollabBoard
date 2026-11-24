@@ -292,51 +292,118 @@ export async function checkLocalResources({
     .getByRole('link', { name: 'Projects', exact: true })
     .last()
     .click();
+  await owner.getByRole('button', { name: 'New project', exact: true }).click();
+  await owner.getByLabel('Project name').fill('Your sample project');
+  await owner.getByLabel('Start with sample tasks').check();
   await owner
-    .getByRole('button', { name: 'Start a seven-day trial', exact: true })
-    .click();
-  await owner
-    .getByRole('button', { name: 'Create trial', exact: true })
-    .click();
-  await owner.waitForURL('**/board');
-  const oldTrial = new URL(owner.url()).pathname.split('/')[2];
-  await owner.getByText('10 tasks', { exact: true }).waitFor();
-  await createTask(owner, 'Trial-only task');
-  await owner.getByRole('link', { name: 'Settings', exact: true }).click();
-  await owner.getByRole('button', { name: 'Reset trial', exact: true }).click();
-  await owner
-    .getByRole('button', { name: 'Confirm reset', exact: true })
+    .getByRole('button', { name: 'Create project', exact: true })
     .click();
   await owner.waitForURL('**/board');
-  const newTrial = new URL(owner.url()).pathname.split('/')[2];
-  assert.notEqual(newTrial, oldTrial);
-  await owner.getByText('10 tasks', { exact: true }).waitFor();
+  await owner.getByText('10 of 10 tasks', { exact: true }).waitFor();
+  const navigation = owner.getByRole('navigation', {
+    name: 'Project navigation',
+  });
   assert.equal(
-    await owner
-      .getByRole('heading', { name: 'Trial-only task', exact: true })
-      .count(),
+    await navigation.getByText('10 tasks', { exact: true }).count(),
     0,
   );
-  await owner.getByRole('link', { name: 'Settings', exact: true }).click();
-  await owner
-    .getByRole('heading', { name: 'Trial project', exact: true })
-    .waitFor();
-  await owner.screenshot({
-    path: resolve(output, 'trial-settings.png'),
-    fullPage: true,
+  const todo = owner.getByRole('region', { name: 'To Do', exact: true });
+  const cards = todo.locator('.task-card');
+  const originalOrder = await cards.locator('h3').allTextContents();
+  const first = await cards.nth(0).boundingBox();
+  const second = await cards.nth(1).boundingBox();
+  const transfer = await owner.evaluateHandle(() => new DataTransfer());
+  await cards.nth(3).dispatchEvent('dragstart', { dataTransfer: transfer });
+  await cards.nth(0).dispatchEvent('dragover', {
+    dataTransfer: transfer,
+    clientY: first.y + first.height - 2,
   });
+  const slot = todo.locator('[data-drop-before]');
+  await slot.waitFor();
+  const shifted = await slot.locator('.task-card').boundingBox();
+  assert.ok(
+    shifted.y >= second.y + 24,
+    'The preview must open space between cards.',
+  );
+  await slot.dispatchEvent('drop', {
+    dataTransfer: transfer,
+    clientY: shifted.y - 10,
+  });
+  await transfer.dispose();
+  await eventually(
+    async () =>
+      (await cards.locator('h3').allTextContents())[1] === originalOrder[3],
+    'Dropping inside the preview must insert at that slot.',
+  );
   await owner
-    .getByRole('button', { name: 'Clean up trial', exact: true })
-    .click();
+    .getByRole('searchbox', { name: 'Search tasks' })
+    .fill('onboarding');
+  await owner.waitForURL((url) => url.searchParams.get('q') === 'onboarding');
+  const originalLocation = owner.url();
+  await owner.getByRole('link', { name: 'Sample board', exact: true }).click();
   await owner
-    .getByRole('button', { name: 'Confirm cleanup', exact: true })
-    .click();
-  await owner.waitForURL('**/projects');
+    .getByRole('navigation', { name: 'Application navigation' })
+    .waitFor();
+  await owner.getByText('Interactive sample', { exact: true }).waitFor();
+  const sampleCard = owner.getByRole('link', {
+    name: /Map the onboarding journey/,
+  });
+  assert.equal(
+    await owner.getByRole('button', { name: /add task|new task/i }).count(),
+    0,
+  );
+  await sampleCard.click();
+  await owner.getByLabel('Sample task status').selectOption('done');
+  await owner.getByRole('button', { name: 'Close dialog' }).click();
   await owner
-    .getByRole('button', { name: 'Start a seven-day trial', exact: true })
+    .locator('.board-column[data-status="done"]')
+    .getByRole('link', { name: /Map the onboarding journey/ })
+    .waitFor();
+  await owner.reload();
+  await owner
+    .locator('.board-column[data-status="todo"]')
+    .getByRole('link', { name: /Map the onboarding journey/ })
+    .waitFor();
+  await owner.getByRole('link', { name: '← Back to workspace' }).click();
+  await owner.waitForURL(originalLocation);
+  await owner
+    .getByRole('heading', { name: 'Your sample project', exact: true })
+    .waitFor();
+  assert.equal(
+    await owner.getByRole('searchbox', { name: 'Search tasks' }).inputValue(),
+    'onboarding',
+  );
+  await navigation.getByRole('link', { name: 'Archived tasks' }).click();
+  await owner
+    .getByRole('link', { name: 'Publish the kickoff notes' })
+    .waitFor();
+  assert.equal(await owner.locator('.archived-task-row').count(), 3);
+  await navigation.getByRole('link', { name: 'Members' }).click();
+  await navigation
+    .getByRole('link', { name: 'Members', current: 'page' })
+    .waitFor();
+  await owner
+    .getByText('riley.chen@example.invalid', { exact: true })
+    .waitFor();
+  await owner
+    .getByRole('heading', { name: 'Your sample project', exact: true })
+    .waitFor();
+  await createTask(owner, 'Private project task');
+  await owner.getByRole('link', { name: 'Settings', exact: true }).click();
+  const newOwner = owner.getByLabel('New Owner', { exact: true });
+  await eventually(
+    async () =>
+      (await newOwner.locator('option:checked').textContent()) ===
+      'No eligible members',
+    'A solo Owner should see an empty member selector.',
+  );
+  assert.ok(await newOwner.isDisabled());
+  await owner.getByRole('link', { name: 'Board', exact: true }).click();
+  await owner
+    .getByRole('heading', { name: 'Private project task', exact: true })
     .waitFor();
   console.info(
-    'Browser workflow: isolated seven-day trials, new-ID reset, task isolation, expiry presentation, and early cleanup passed.',
+    'Browser workflow: permanent sample-based projects and interactive public sample passed.',
   );
 
   await fixture.query(
@@ -361,7 +428,7 @@ export async function checkLocalResources({
     .getByRole('button', { name: 'Close dialog', exact: true })
     .click();
   await editor.reload();
-  await editor.getByText('500 tasks', { exact: true }).waitFor();
+  await editor.getByText('500 of 500 tasks', { exact: true }).waitFor();
   assert.equal(await editor.locator('.task-card').count(), 500);
   await editor
     .getByRole('searchbox', { name: 'Search tasks', exact: true })
@@ -423,6 +490,7 @@ export async function checkIdentity({ browser, base, output, pages, errors }) {
     .getByLabel('Project name', { exact: true })
     .fill('My first project');
   await page
+    .getByRole('dialog')
     .getByRole('button', { name: 'Create project', exact: true })
     .click();
   await page.waitForURL('**/board');
@@ -498,11 +566,57 @@ export async function checkIdentity({ browser, base, output, pages, errors }) {
   );
   await context.setOffline(false);
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
-  await page.waitForURL('**/sign-in?*');
-  await page.reload();
+  const confirmation = page.getByRole('dialog', { name: 'Sign out?' });
+  await confirmation.getByRole('button', { name: 'Cancel' }).click();
+  const switchAccount = page.getByRole('button', {
+    name: 'Switch account',
+    exact: true,
+  });
+  const switchDialog = page.getByRole('dialog', { name: 'Switch account?' });
+  const confirmSwitch = switchDialog.getByRole('button', {
+    name: 'Switch account',
+    exact: true,
+  });
+  await switchAccount.click();
+  await switchDialog.getByRole('button', { name: 'Cancel' }).click();
+  await switchDialog.waitFor({ state: 'hidden' });
+  assert.equal(new URL(page.url()).pathname, '/projects');
+  await switchAccount.click();
+  await confirmSwitch.click();
   await page
-    .getByRole('heading', { name: 'Welcome to CollabBoard', exact: true })
+    .getByText(`Currently signed in as ${email}.`, { exact: true })
     .waitFor();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await page.waitForURL('**/projects');
+  const beforeSwitch = await (
+    await context.request.get(`${base}/api/auth/session`)
+  ).json();
+  assert.equal(beforeSwitch.user.email, email);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await switchAccount.click();
+  await confirmSwitch.click();
+  await page.getByRole('button', { name: /Jamie Lee/ }).click();
+  await page.waitForURL('**/projects');
+  const afterSwitch = await (
+    await context.request.get(`${base}/api/auth/session`)
+  ).json();
+  assert.equal(afterSwitch.user.email, 'jamie@example.com');
+  assert.equal(
+    (
+      await context.request.get(`${base}/api/me`, {
+        headers: { Authorization: `Bearer ${beforeSwitch.accessToken}` },
+      })
+    ).status(),
+    401,
+  );
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await confirmation
+    .getByRole('button', { name: 'Sign out', exact: true })
+    .click();
+  await page.waitForURL('**/sign-in?*');
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.reload();
+  await page.getByRole('heading', { name: 'Sign in', exact: true }).waitFor();
   assert.deepEqual(errors, [], 'Identity workflows reported browser errors.');
   await page.screenshot({
     path: resolve(output, 'identity-sign-in.png'),

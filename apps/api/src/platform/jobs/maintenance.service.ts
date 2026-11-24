@@ -7,7 +7,6 @@ import {
 } from '@nestjs/common';
 import { Database } from '../database/database.js';
 import { FilesService } from '../../modules/files/files.service.js';
-import { TrialsService } from '../../modules/trials/trials.service.js';
 import { LocalPrivateStorage } from '../storage/private-storage.js';
 
 @Injectable()
@@ -18,7 +17,6 @@ export class MaintenanceService implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Inject(Database) private readonly database: Database,
     @Inject(FilesService) private readonly files: FilesService,
-    @Inject(TrialsService) private readonly trials: TrialsService,
     @Inject(LocalPrivateStorage) private readonly storage: LocalPrivateStorage,
   ) {}
   onModuleInit() {
@@ -42,7 +40,6 @@ export class MaintenanceService implements OnModuleInit, OnModuleDestroy {
     await this.active;
   }
   async tick() {
-    await this.trials.cleanup();
     await this.files.cleanup();
     await this.storage.cleanupOrphans(
       async (key) =>

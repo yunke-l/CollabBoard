@@ -1,3 +1,9 @@
+import {
+  MemberSelect,
+  assigneeOptions,
+} from '../../features/projects/member-select';
+import { SelectControl } from '../../shared/ui/select-control';
+import { Columns3, ChartNoAxesColumnIncreasing } from 'lucide-react';
 import { useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -17,12 +23,14 @@ export function CreateTaskDialog({
   status: initialStatus,
   onClose,
   members,
+  membersFailed,
   canWrite,
 }: {
   projectId: string;
   status: TaskStatus;
   onClose: () => void;
-  members: ProjectMember[];
+  members: ProjectMember[] | undefined;
+  membersFailed: boolean;
   canWrite: boolean;
 }) {
   const [title, setTitle] = useState('');
@@ -100,19 +108,14 @@ export function CreateTaskDialog({
       <form onSubmit={(event) => void submit(event)}>
         <label className="field">
           Assignee
-          <select
+          <MemberSelect
             value={assigneeId}
             onChange={(event) => setAssigneeId(event.target.value)}
-          >
-            <option value="">Unassigned</option>
-            {members
-              .filter((member) => member.role !== 'Viewer')
-              .map((member) => (
-                <option value={member.id} key={member.id}>
-                  {member.displayName}
-                </option>
-              ))}
-          </select>
+            options={assigneeOptions(members)}
+            placeholder="Unassigned"
+            emptyLabel="No assignees available"
+            loadFailed={membersFailed}
+          />
         </label>
         <label className="field">
           Task title
@@ -135,7 +138,8 @@ export function CreateTaskDialog({
         <div className="form-grid">
           <label className="field">
             Status
-            <select
+            <SelectControl
+              icon={Columns3}
               value={status}
               onChange={(event) => setStatus(event.target.value as TaskStatus)}
             >
@@ -144,11 +148,12 @@ export function CreateTaskDialog({
                   {statusLabels[item]}
                 </option>
               ))}
-            </select>
+            </SelectControl>
           </label>
           <label className="field">
             Priority
-            <select
+            <SelectControl
+              icon={ChartNoAxesColumnIncreasing}
               value={priority}
               onChange={(event) => setPriority(event.target.value)}
             >
@@ -157,7 +162,7 @@ export function CreateTaskDialog({
                   {item[0]!.toUpperCase() + item.slice(1)}
                 </option>
               ))}
-            </select>
+            </SelectControl>
           </label>
         </div>
         <label className="field">

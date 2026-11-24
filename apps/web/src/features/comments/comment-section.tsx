@@ -21,6 +21,30 @@ import {
 import { useOnline } from '../../shared/lib/use-online';
 import { useProjectAccess } from '../projects/use-project-access';
 
+export function CommentContent({ comment }: { comment: TaskComment }) {
+  return (
+    <>
+      {' '}
+      <div className="comment-heading">
+        <Avatar name={comment.authorName} userId={comment.authorId} />
+        <strong>{comment.authorName}</strong>
+        {!comment.authorActive && (
+          <small className="muted">Left the project</small>
+        )}
+        <time dateTime={comment.createdAt}>
+          {new Date(comment.createdAt).toLocaleString('en')}
+        </time>
+      </div>
+      <p className={comment.deletedAt ? 'comment-deleted' : 'plain-text'}>
+        {comment.deletedAt ? 'Comment deleted' : comment.body}
+      </p>
+      {comment.editedAt && !comment.deletedAt && (
+        <small className="muted">Edited</small>
+      )}
+    </>
+  );
+}
+
 type Draft = { id: string; body: string; expectedVersion: number };
 export function CommentSection({
   project,
@@ -52,7 +76,7 @@ export function CommentSection({
   useProjectAccess(project.id, query.error);
   const [body, setBody] = useState('');
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [deleting, setDeleting] = useState<TaskComment | null>(null);
+  const [deleteTarget, setDeleting] = useState<TaskComment | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const [conflict, setConflict] = useState(false);
@@ -68,6 +92,11 @@ export function CommentSection({
         .map((item) => [item.id, item]),
     ).values(),
   ];
+  const deleting = items.some(
+    (item) => item.id === deleteTarget?.id && !item.deletedAt,
+  )
+    ? deleteTarget
+    : null;
   const canAdd = projectCapabilities(
     project.role,
     project.status,
@@ -351,45 +380,6 @@ export function CommentSection({
           </div>
         </form>
       )}
-      {deleting && (
-        <div
-          className="action-confirmation"
-          role="group"
-          aria-label="Confirm comment deletion"
-        >
-          <p>
-            Delete this comment? Its text will be removed and a deleted marker
-            will remain.
-          </p>
-          <div className="dialog-actions">
-            <button
-              className="button"
-              disabled={pending}
-              onClick={() => setDeleting(null)}
-            >
-              Keep comment
-            </button>
-            <button
-              className="button danger"
-              disabled={
-                pending ||
-                disabled ||
-                !commentCapabilities(
-                  project.role,
-                  project.status,
-                  !!task.archivedAt,
-                  deleting.authorId === user?.id,
-                  false,
-                  online,
-                ).canDelete
-              }
-              onClick={() => void remove()}
-            >
-              Confirm comment deletion
-            </button>
-          </div>
-        </div>
-      )}
       {query.isPending ? (
         <LoadingState />
       ) : query.isError && (!query.data || denied) ? (
@@ -410,62 +400,70 @@ export function CommentSection({
                 );
                 return (
                   <article className="comment-row" key={comment.id}>
-                    <div className="comment-heading">
-                      <Avatar
-                        name={comment.authorName}
-                        userId={comment.authorId}
-                      />
-                      <strong>{comment.authorName}</strong>
-                      {!comment.authorActive && (
-                        <small className="muted">Left the project</small>
-                      )}
-                      <time dateTime={comment.createdAt}>
-                        {new Date(comment.createdAt).toLocaleString('en')}
-                      </time>
-                    </div>
-                    <p className="plain-text">
-                      {comment.deletedAt ? 'Comment deleted' : comment.body}
-                    </p>
-                    {comment.editedAt && !comment.deletedAt && (
-                      <small className="muted">Edited</small>
-                    )}
-                    {(allowed.canEdit || allowed.canDelete) && (
-                      <div className="comment-actions">
-                        {allowed.canEdit && (
-                          <button
-                            className="button"
-                            disabled={
-                              pending || disabled || !!draft || !!deleting
-                            }
-                            onClick={() => {
-                              setDraft({
-                                id: comment.id,
-                                body: comment.body!,
-                                expectedVersion: comment.version,
-                              });
-                              setConflict(false);
-                              setReview(null);
-                              setError('');
-                            }}
-                          >
-                            Edit comment
-                          </button>
-                        )}
-                        {allowed.canDelete && (
-                          <button
-                            className="button danger"
-                            disabled={
-                              pending || disabled || !!draft || !!deleting
-                            }
-                            onClick={() => {
-                              setDeleting(comment);
-                              setError('');
-                            }}
-                          >
-                            Delete comment
-                          </button>
-                        )}
+                    <CommentContent comment={comment} />
+                    {deleting?.id === comment.id ? (
+                      <div
+                        className="comment-delete-confirm"
+                        role="group"
+                        aria-label="Confirm comment deletion"
+                      >
+                        <span>Delete this comment?</span>
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={() => setDeleting(null)}
+                        >
+                          Keep comment
+                        </button>
+                        <button
+                          type="button"
+                          className="confirm-delete"
+                          aria-label="Confirm comment deletion"
+                          disabled={pending || disabled || !allowed.canDelete}
+                          onClick={() => void remove()}
+                        >
+                          Delete
+                        </button>
                       </div>
+                    ) : (
+                      (allowed.canEdit || allowed.canDelete) && (
+                        <div className="comment-actions">
+                          {allowed.canEdit && (
+                            <button
+                              className="button"
+                              disabled={
+                                pending || disabled || !!draft || !!deleting
+                              }
+                              onClick={() => {
+                                setDraft({
+                                  id: comment.id,
+                                  body: comment.body!,
+                                  expectedVersion: comment.version,
+                                });
+                                setConflict(false);
+                                setReview(null);
+                                setError('');
+                              }}
+                            >
+                              Edit comment
+                            </button>
+                          )}
+                          {allowed.canDelete && (
+                            <button
+                              className="button danger"
+                              disabled={
+                                pending || disabled || !!draft || !!deleting
+                              }
+                              onClick={() => {
+                                setDeleting(comment);
+                                setError('');
+                              }}
+                            >
+                              Delete comment
+                            </button>
+                          )}
+                        </div>
+                      )
                     )}
                   </article>
                 );

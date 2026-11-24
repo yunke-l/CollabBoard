@@ -30,9 +30,9 @@ export function ArchivedTasksPage() {
   useProjectAccess(projectId, query.error);
   if (query.isPending)
     return (
-      <main className="content">
+      <div>
         <LoadingState />
-      </main>
+      </div>
     );
   if (
     query.isError &&
@@ -41,9 +41,9 @@ export function ArchivedTasksPage() {
         [401, 403, 404].includes(query.error.status)))
   )
     return (
-      <main className="content">
+      <div>
         <ErrorState error={query.error} retry={() => void query.refetch()} />
-      </main>
+      </div>
     );
   const project = query.data!.pages[0]!.project;
   const tasks = [
@@ -54,14 +54,10 @@ export function ArchivedTasksPage() {
     ).values(),
   ];
   return (
-    <main className="content">
-      <Link className="back-link" to={`/projects/${projectId}/board`}>
-        ← Back to board
-      </Link>
+    <div>
       <div className="page-heading">
         <div>
-          <h1>Archived tasks</h1>
-          <p>{project.name}</p>
+          <h2>Archived tasks</h2>
         </div>
       </div>
       {!online && (
@@ -130,6 +126,6 @@ export function ArchivedTasksPage() {
           </button>
         </div>
       )}
-    </main>
+    </div>
   );
 }

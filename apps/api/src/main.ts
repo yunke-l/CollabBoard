@@ -65,8 +65,6 @@ app.use(async (request: Request, response: Response, next: NextFunction) => {
     request.method === 'POST'
   )
     buckets.push({ name: 'uploads', limit: 20 });
-  if (request.path.startsWith('/api/demo/projects'))
-    buckets.push({ name: 'trials', limit: 6 });
   try {
     await consumeRate(app.get(Database), user.id, buckets);
     next();
@@ -79,7 +77,7 @@ app.use(async (request: Request, response: Response, next: NextFunction) => {
 const config = new DocumentBuilder()
   .setTitle('CollabBoard API')
   .setDescription(
-    'Local accounts, projects, tasks, collaboration hints, comments, notifications, private attachments, and isolated trials. Local adapters are restricted to development and test.',
+    'Local accounts, projects, tasks, collaboration hints, comments, notifications, private attachments, and a public sample board. Local adapters are restricted to development and test.',
   )
   .setVersion('0.1.0')
   .addBearerAuth()

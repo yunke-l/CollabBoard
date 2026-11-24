@@ -59,11 +59,25 @@ try {
   assert.equal(live?.status, 200, 'Compiled API must start successfully.');
   assert.equal(live.headers.get('cache-control'), 'no-store');
   assert.ok(live.headers.get('x-request-id'));
-  assert.equal(
-    (await fetch(`${base}/demo`).then((response) => response.json())).tasks
-      .length,
-    10,
+  const sample = await fetch(`${base}/demo`).then((response) =>
+    response.json(),
   );
+  assert.equal(sample.tasks.length, 10);
+  for (const task of sample.tasks) {
+    assert.equal(
+      task.commentCount,
+      sample.comments.filter((comment) => comment.taskId === task.id).length,
+    );
+    assert.equal(
+      task.attachmentCount,
+      sample.attachments.filter((file) => file.taskId === task.id).length,
+    );
+    assert.ok(
+      sample.activity.some(
+        (event) => event.taskId === task.id && event.action === 'task.created',
+      ),
+    );
+  }
   assert.equal((await fetch(`${base}/projects`)).status, 401);
   const reference = await fetch(`${base}/openapi.json`).then((response) =>
     response.json(),
@@ -98,10 +112,6 @@ try {
     '/api/attachments/{id}',
     '/api/attachments/{id}/download',
     '/api/downloads/{token}',
-    '/api/demo/projects',
-    '/api/demo/projects/current',
-    '/api/demo/projects/{id}/reset',
-    '/api/demo/projects/{id}/cleanup',
     ...[
       'sign-up',
       'sign-in',
@@ -113,6 +123,11 @@ try {
     ].map((action) => `/api/auth/${action}`),
   ])
     assert.ok(reference.paths[path], `OpenAPI must include ${path}.`);
+  assert.deepEqual(
+    Object.keys(reference.paths).filter((path) => path.startsWith('/api/demo')),
+    ['/api/demo'],
+  );
+  assert.deepEqual(Object.keys(reference.paths['/api/demo']), ['get']);
   const preflight = await fetch(
     `${base}/tasks/11111111-1111-4111-8111-111111111111`,
     {
@@ -211,9 +226,6 @@ try {
     ['POST', `/tasks/${resourceId}/attachments`],
     ['POST', `/attachments/${resourceId}/complete`],
     ['DELETE', `/attachments/${resourceId}`],
-    ['POST', '/demo/projects'],
-    ['POST', `/demo/projects/${resourceId}/reset`],
-    ['POST', `/demo/projects/${resourceId}/cleanup`],
     ...[
       'sign-up',
       'sign-in',
@@ -255,8 +267,6 @@ try {
     ['GET', `/comments/${resourceId}`],
     ['GET', `/projects/${resourceId}/activity`],
     ['GET', '/events'],
-    ['GET', '/demo/projects/current'],
-    ['POST', '/demo/projects'],
     ['GET', `/tasks/${resourceId}/attachments`],
     ['PUT', `/attachments/${resourceId}/content`],
     ['POST', `/attachments/${resourceId}/download`],

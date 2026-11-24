@@ -52,7 +52,7 @@ export class DispatcherService implements OnModuleInit, OnModuleDestroy {
       );
       for (const event of events.rows) {
         await client.query(
-          `INSERT INTO event_deliveries(event_id, recipient_id) SELECT $1, m.user_id FROM project_members m JOIN projects p ON p.id = m.project_id WHERE p.id = $2 AND p.status <> 'expired' AND (p.expires_at IS NULL OR p.expires_at > now()) ON CONFLICT DO NOTHING`,
+          `INSERT INTO event_deliveries(event_id, recipient_id) SELECT $1, m.user_id FROM project_members m JOIN projects p ON p.id = m.project_id WHERE p.id = $2 AND p.status <> 'expired' ON CONFLICT DO NOTHING`,
           [event.id, event.projectId],
         );
         await client.query(
@@ -79,7 +79,7 @@ export class DispatcherService implements OnModuleInit, OnModuleDestroy {
         const event = await this.database.pool.query<
           EventHint & { recipientId: string }
         >(
-          `SELECT e.event_id AS "eventId", e.event_type AS "eventType", e.project_id AS "projectId", e.entity_id AS "entityId", e.entity_version AS "entityVersion", e.board_revision AS "boardRevision", e.created_at AS "occurredAt" FROM outbox_events e JOIN projects p ON p.id = e.project_id JOIN project_members m ON m.project_id = p.id AND m.user_id = $2 WHERE e.event_id = $1 AND p.status <> 'expired' AND (p.expires_at IS NULL OR p.expires_at > now())`,
+          `SELECT e.event_id AS "eventId", e.event_type AS "eventType", e.project_id AS "projectId", e.entity_id AS "entityId", e.entity_version AS "entityVersion", e.board_revision AS "boardRevision", e.created_at AS "occurredAt" FROM outbox_events e JOIN projects p ON p.id = e.project_id JOIN project_members m ON m.project_id = p.id AND m.user_id = $2 WHERE e.event_id = $1 AND p.status <> 'expired'`,
           [row.eventId, row.recipientId],
         );
         const hint = event.rows[0];

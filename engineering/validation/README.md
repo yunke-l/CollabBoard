@@ -22,11 +22,11 @@ Recovery uses a frozen logical backup with API writes stopped. A second disposab
 | UAT-14–15                           | Transactional notification tests; offline recipient persistence, counts, reads, and lost-response bulk-read replay preserving late arrivals                                         |
 | UAT-16                              | Comment authorization, body-free tombstones/history/replays, version races, escaped plain text, and desktop/mobile browser moderation                                               |
 | UAT-17–19                           | File initialization/completion, actual content checks, signed capabilities, cross-upload access, expiry, reservation quotas, downgrade during completion, and safe retry            |
-| UAT-23                              | Independent trial copies, immediate expiry checks, new-ID resets, cleanup queues, and browser start/reset/cleanup                                                                   |
+| UAT-23                              | Permanent private sample-based projects, ordinary quotas, local sample movement, and refresh reset                                                                                  |
 | UAT-24–25                           | Outbox rollback/partial delivery/retry/expired-lease tests; duplicate request and delayed/lost-response browser scenarios. Lease expiry models worker interruption.                 |
 | UAT-26–27                           | Local performance report, 500-task search, keyboard/drag alternatives, desktop/mobile widths, and theme screenshots                                                                 |
 | UAT-29                              | Independent logical database restore and exact table comparison; cloud RPO and point-in-time recovery deferred                                                                      |
-| UAT-30, local portion               | Trial removal, orphan/queued-object and retention tests, disposable fixture cleanup, and local teardown instructions                                                                |
+| UAT-30, local portion               | Orphan/queued-object and retention tests, disposable fixture cleanup, and local teardown instructions                                                                               |
 | UAT-28; cloud portions of UAT-29–30 | Deferred at the user's request; no cloud deployment, rollback, billing, or resource cleanup claimed                                                                                 |
 
 The local scope covers milestones M1–M3. Cloud milestones M4–M6, portfolio recording/publication, current real-browser release certification, and all cloud operating measurements remain separate work.

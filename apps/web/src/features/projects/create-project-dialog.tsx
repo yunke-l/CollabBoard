@@ -13,6 +13,7 @@ export function CreateProjectDialog({
   onCreated: (project: Project) => void;
 }) {
   const [name, setName] = useState('');
+  const [fromSample, setFromSample] = useState(false);
   const [description, setDescription] = useState('');
   const [error, setError] = useState('');
   const attempt = useRef<{ content: string; requestId: string } | null>(null);
@@ -32,12 +33,14 @@ export function CreateProjectDialog({
     const content = JSON.stringify({
       name: name.trim(),
       description: description.trim(),
+      fromSample,
     });
     if (attempt.current?.content !== content)
       attempt.current = { content, requestId: crypto.randomUUID() };
     const parsed = createProjectSchema.safeParse({
       name,
       description,
+      fromSample,
       requestId: attempt.current.requestId,
     });
     if (!parsed.success) {
@@ -81,6 +84,14 @@ export function CreateProjectDialog({
             onChange={(event) => setDescription(event.target.value)}
             rows={3}
           />
+        </label>
+        <label className="sample-template-option">
+          <input
+            type="checkbox"
+            checked={fromSample}
+            onChange={(event) => setFromSample(event.target.checked)}
+          />
+          Start with sample tasks
         </label>
         {error && (
           <p id="project-error" role="alert" className="error-copy">

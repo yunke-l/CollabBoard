@@ -16,7 +16,6 @@ import { Database } from './platform/database/database.js';
 import {
   LocalIdentityProvider,
   refreshCookie,
-  setRefreshCookie,
 } from './modules/identity/identity.service.js';
 import { LocalAccounts } from './adapters/identity/local-accounts.js';
 import { IdentityController } from './modules/identity/identity.controller.js';
@@ -36,8 +35,6 @@ import { DiscussionController } from './modules/discussion/discussion.controller
 import { DiscussionService } from './modules/discussion/discussion.service.js';
 import { FilesController } from './modules/files/files.controller.js';
 import { FilesService } from './modules/files/files.service.js';
-import { TrialsController } from './modules/trials/trials.controller.js';
-import { TrialsService } from './modules/trials/trials.service.js';
 import { MaintenanceService } from './platform/jobs/maintenance.service.js';
 import { LocalPrivateStorage } from './platform/storage/private-storage.js';
 import { EventsController } from './modules/events/events.controller.js';
@@ -104,13 +101,14 @@ class FoundationController {
     },
   })
   session(
+    @Req() request: Request,
     @Body() body: { userId?: unknown } | null,
     @Res({ passthrough: true }) response: Response,
   ) {
     const { refreshToken, ...session } = this.identity.createSession(
       body?.userId,
     );
-    setRefreshCookie(response, refreshToken);
+    this.identity.setSignInCookie(request, response, refreshToken);
     return session;
   }
 
@@ -148,7 +146,6 @@ class FoundationController {
     NotificationsController,
     DiscussionController,
     FilesController,
-    TrialsController,
     EventsController,
   ],
   providers: [
@@ -160,7 +157,6 @@ class FoundationController {
     DiscussionService,
     LocalPrivateStorage,
     FilesService,
-    TrialsService,
     MaintenanceService,
     LocalHintTransport,
     { provide: HINT_TRANSPORT, useExisting: LocalHintTransport },

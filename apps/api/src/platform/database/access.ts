@@ -15,7 +15,7 @@ export async function projectAccess(
     projectId,
   ]);
   const { rows } = await client.query<Project>(
-    `SELECT p.id, p.name, p.description, p.status, p.board_revision AS "boardRevision", p.created_at::text AS "createdAt", p.is_trial AS "isTrial", p.expires_at::text AS "expiresAt", m.role FROM projects p JOIN project_members m ON m.project_id = p.id AND m.user_id = $2 WHERE p.id = $1 AND p.status <> 'expired' AND (p.expires_at IS NULL OR p.expires_at > now())`,
+    `SELECT p.id, p.name, p.description, p.status, p.board_revision AS "boardRevision", p.created_at::text AS "createdAt", m.role FROM projects p JOIN project_members m ON m.project_id = p.id AND m.user_id = $2 WHERE p.id = $1 AND p.status <> 'expired'`,
     [projectId, userId],
   );
   if (!rows[0])

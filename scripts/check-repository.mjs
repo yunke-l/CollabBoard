@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const files = execFileSync(
   'git',
@@ -23,6 +23,7 @@ if (excluded.length)
 const nonEnglish = files.filter(
   (file) =>
     /\.(?:tsx?|m?js|json|md|css|html|ya?ml|sql)$/.test(file) &&
+    existsSync(file) &&
     /[\u3400-\u9fff]/u.test(readFileSync(file, 'utf8')),
 );
 if (nonEnglish.length)

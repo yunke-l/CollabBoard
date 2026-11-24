@@ -1,7 +1,8 @@
+import { SelectControl } from '../../shared/ui/select-control';
 import { useRef, useState, type FormEvent } from 'react';
-import { Link, useParams } from 'react-router';
+import { useParams } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Copy, Plus } from 'lucide-react';
+import { Copy, Plus, Shield } from 'lucide-react';
 import {
   createInvitationSchema,
   projectCapabilities,
@@ -153,27 +154,24 @@ export function MembersPage() {
   }
   if (query.isPending)
     return (
-      <main className="content">
+      <div>
         <LoadingState />
-      </main>
+      </div>
     );
   if (query.isError)
     return (
-      <main className="content">
+      <div>
         <ErrorState error={query.error} retry={() => void query.refetch()} />
-      </main>
+      </div>
     );
   const { project, members } = query.data;
   return (
-    <main className="content members-content">
-      <Link className="text-link" to={`/projects/${projectId}/board`}>
-        ← Back to board
-      </Link>
-      <div className="page-heading project-heading">
+    <div className="members-content">
+      <div className="page-heading">
         <div>
-          <h1>Members</h1>
+          <h2>Members</h2>
           <p>
-            {project.name} · {members.length} of {limits.members} members
+            {members.length} of {limits.members} members
           </p>
         </div>
         {canManage && (
@@ -318,7 +316,8 @@ export function MembersPage() {
               </label>
               <label className="field">
                 Role
-                <select
+                <SelectControl
+                  icon={Shield}
                   value={role}
                   disabled={pending}
                   onChange={(event) =>
@@ -327,7 +326,7 @@ export function MembersPage() {
                 >
                   <option>Editor</option>
                   <option>Viewer</option>
-                </select>
+                </SelectControl>
               </label>
               <div className="dialog-actions">
                 <button
@@ -404,6 +403,6 @@ export function MembersPage() {
           </div>
         </Dialog>
       )}
-    </main>
+    </div>
   );
 }

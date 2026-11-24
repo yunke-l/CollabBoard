@@ -19,15 +19,6 @@ export function cookieToken(request: Request) {
       ?.slice(refreshCookie.length + 1) ?? ''
   );
 }
-export function setRefreshCookie(response: Response, token: string) {
-  response.cookie(refreshCookie, token, {
-    httpOnly: true,
-    sameSite: 'strict',
-    path: '/api/auth',
-    maxAge: 7 * 86400000,
-    secure: false,
-  });
-}
 
 @Injectable()
 export class LocalIdentityProvider implements IdentityProvider {
@@ -78,6 +69,16 @@ export class LocalIdentityProvider implements IdentityProvider {
     if (session) this.accounts.revokeHash(session.refreshHash);
     this.accounts.revoke(cookieToken(request));
     this.sessions.delete(token);
+  }
+  setSignInCookie(request: Request, response: Response, token: string) {
+    if (this.token(request)) this.signOut(request);
+    response.cookie(refreshCookie, token, {
+      httpOnly: true,
+      sameSite: 'strict',
+      path: '/api/auth',
+      maxAge: 7 * 86400000,
+      secure: false,
+    });
   }
   private session(
     user: User,

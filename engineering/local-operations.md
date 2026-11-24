@@ -24,9 +24,9 @@ pnpm jobs:retry-events
 
 The command accepts a loopback database only. It resets failed deliveries for retry, not business writes or notifications. Duplicate hints are expected after interrupted acknowledgement; notification creation is part of the original business transaction and is not repeated by dispatch.
 
-Maintenance runs at startup and every minute without overlapping itself. It expires pending uploads, removes rejected/deleted/expired objects, removes orphaned temporary or unknown files older than 15 minutes, expires and deletes trial projects in bounded batches, and retries queued object removals. A failure logs a sanitized error and retries on the next tick. Restarting the local API reruns maintenance. Do not manually delete ready objects or database metadata to free quota.
+Maintenance runs at startup and every minute without overlapping itself. It expires pending uploads, removes rejected/deleted/expired objects, removes orphaned temporary or unknown files older than 15 minutes, and retries queued object removals. A failure logs a sanitized error and retries on the next tick. Restarting the local API reruns maintenance. Do not manually delete ready objects or database metadata to free quota.
 
-Trial access expires independently of this worker. Reset and early cleanup immediately withdraw access and revoke old invitations; data/files disappear asynchronously. Ordinary projects are never deleted by trial cleanup. Retention is 30 days for notifications, 90 days for activity, at least 24 hours for idempotency, and seven days for delivered events. Failed events remain until retry or manual handling. This local application writes no retained access-log files; terminal capture and Docker log retention are host responsibilities.
+Projects are retained indefinitely. Retention is 30 days for notifications, 90 days for activity, at least 24 hours for idempotency, and seven days for delivered events. Failed events remain until retry or manual handling. This local application writes no retained access-log files; terminal capture and Docker log retention are host responsibilities.
 
 ## Consistent backup
 

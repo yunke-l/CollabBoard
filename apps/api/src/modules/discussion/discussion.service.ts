@@ -245,7 +245,7 @@ export class DiscussionService {
       role: Project['role'];
       boardRevision: number;
     }>(
-      `SELECT p.id, p.status, p.board_revision AS "boardRevision", m.role FROM projects p JOIN project_members m ON m.project_id = p.id WHERE p.id = $1 AND m.user_id = $2 AND p.status <> 'expired' AND (p.expires_at IS NULL OR p.expires_at > now())`,
+      `SELECT p.id, p.status, p.board_revision AS "boardRevision", m.role FROM projects p JOIN project_members m ON m.project_id = p.id WHERE p.id = $1 AND m.user_id = $2 AND p.status <> 'expired'`,
       [projectId, userId],
     );
     if (!result.rows[0])

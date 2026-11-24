@@ -1,11 +1,19 @@
-import { Link, Navigate, NavLink, Outlet, useLocation } from 'react-router';
+import {
+  Link,
+  Navigate,
+  NavLink,
+  Outlet,
+  useLocation,
+  useMatch,
+  useNavigate,
+} from 'react-router';
 import { useState } from 'react';
-import { Columns3, FolderKanban, LogOut } from 'lucide-react';
+import { Columns3, FolderKanban, LogOut, UsersRound } from 'lucide-react';
 import {
   Avatar,
   Brand,
+  Dialog,
   LoadingState,
-  Notice,
   ThemeSwitch,
 } from '../../shared/ui/common';
 import { useSession } from '../providers/session';
@@ -36,6 +44,17 @@ export function PublicLayout() {
     </>
   );
 }
+export function SampleLayout() {
+  const { user, ready } = useSession();
+  if (!ready)
+    return (
+      <main className="content">
+        <LoadingState />
+      </main>
+    );
+  return user ? <AppLayout /> : <PublicLayout />;
+}
+
 export function SessionBoundary() {
   const { user, ready } = useSession();
   const location = useLocation();
@@ -56,7 +75,19 @@ export function SessionBoundary() {
 }
 export function AppLayout() {
   const { user, signOut } = useSession();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const viewingSample = useMatch('/demo/*');
+  const sampleSearch = viewingSample
+    ? location.search
+    : '?' +
+      new URLSearchParams({
+        returnTo: location.pathname + location.search + location.hash,
+      }).toString();
   const online = useOnline();
+  const [confirmation, setConfirmation] = useState<
+    'switch' | 'sign-out' | null
+  >(null);
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState('');
   async function leaveSession() {
@@ -75,6 +106,32 @@ export function AppLayout() {
       setSigningOut(false);
     }
   }
+  const accountActions = (
+    <>
+      <button
+        className="icon-button"
+        title="Switch account"
+        aria-label="Switch account"
+        aria-haspopup="dialog"
+        onClick={() => setConfirmation('switch')}
+      >
+        <UsersRound size={18} />
+      </button>
+      <button
+        className="icon-button"
+        aria-label="Sign out"
+        aria-haspopup="dialog"
+        disabled={!online || signingOut}
+        title={online ? 'Sign out' : 'Reconnect to sign out'}
+        onClick={() => {
+          setSignOutError('');
+          setConfirmation('sign-out');
+        }}
+      >
+        <LogOut size={18} />
+      </button>
+    </>
+  );
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -84,27 +141,18 @@ export function AppLayout() {
             <FolderKanban size={20} />
             Projects
           </NavLink>
-          <NavLink to="/demo">
+          <NavLink to={{ pathname: '/demo', search: sampleSearch }}>
             <Columns3 size={20} />
             Sample board
           </NavLink>
         </nav>
         <div className="sidebar-bottom">
-          <ThemeSwitch />
           <div className="profile">
             <Avatar name={user?.displayName ?? null} userId={user?.id} />
             <div>
               <strong>{user?.displayName}</strong>
             </div>
-            <button
-              className="icon-button"
-              aria-label="Sign out"
-              disabled={!online || signingOut}
-              title={online ? 'Sign out' : 'Reconnect to sign out'}
-              onClick={() => void leaveSession()}
-            >
-              <LogOut size={18} />
-            </button>
+            {accountActions}
           </div>
         </div>
       </aside>
@@ -117,24 +165,65 @@ export function AppLayout() {
             Projects
           </Link>
           <ConnectionStatus />
+          <ThemeSwitch />
           <NotificationLink />
-          <div className="mobile-only">
-            <ThemeSwitch />
+          <div className="mobile-only mobile-account-actions">
+            {accountActions}
           </div>
-          <button
-            className="icon-button mobile-only"
-            aria-label="Sign out"
-            disabled={!online || signingOut}
-            title={online ? 'Sign out' : 'Reconnect to sign out'}
-            onClick={() => void leaveSession()}
-          >
-            <LogOut size={18} />
-          </button>
         </header>
-        {signOutError && (
-          <Notice>
-            <span role="alert">{signOutError}</span>
-          </Notice>
+        {confirmation === 'switch' && (
+          <Dialog title="Switch account?" onClose={() => setConfirmation(null)}>
+            <p>
+              You’ll stay signed in as {user?.email} until you sign in to
+              another account.
+            </p>
+            <div className="dialog-actions">
+              <button className="button" onClick={() => setConfirmation(null)}>
+                Cancel
+              </button>
+              <button
+                className="button primary"
+                onClick={() =>
+                  navigate('/switch-account', {
+                    state: { fromAccountControls: true },
+                  })
+                }
+              >
+                Switch account
+              </button>
+            </div>
+          </Dialog>
+        )}
+        {confirmation === 'sign-out' && (
+          <Dialog
+            title="Sign out?"
+            busy={signingOut}
+            onClose={() => setConfirmation(null)}
+          >
+            <p>Sign out of {user?.email} on this device?</p>
+            {signOutError && (
+              <p role="alert" className="error-copy">
+                {signOutError}
+              </p>
+            )}
+            {!online && <p role="status">Reconnect to sign out.</p>}
+            <div className="dialog-actions">
+              <button
+                className="button"
+                disabled={signingOut}
+                onClick={() => setConfirmation(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="button primary"
+                disabled={signingOut || !online}
+                onClick={() => void leaveSession()}
+              >
+                {signingOut ? 'Signing out…' : 'Sign out'}
+              </button>
+            </div>
+          </Dialog>
         )}
         <Outlet />
       </div>

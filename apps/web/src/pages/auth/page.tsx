@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import type { User } from '@collabboard/contracts';
 import { api } from '../../shared/api/client';
@@ -12,8 +12,9 @@ import {
 } from '../../shared/ui/common';
 import { useSession } from '../../app/providers/session';
 
-export function SignInPage() {
-  const { signIn, signInWithEmail } = useSession();
+export function SignInPage({ switching = false }: { switching?: boolean }) {
+  const { user: currentUser, signIn, signInWithEmail } = useSession();
+  const location = useLocation();
   const navigate = useNavigate();
   const [search] = useSearchParams();
   const [pending, setPending] = useState<string | null>(null);
@@ -21,7 +22,9 @@ export function SignInPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   function enter() {
-    const destination = search.get('returnTo') ?? '/projects';
+    const destination = switching
+      ? '/projects'
+      : (search.get('returnTo') ?? '/projects');
     navigate(
       (/^\/projects(?:\/|\?|$)/.test(destination) ||
         destination === '/invite') &&
@@ -56,15 +59,7 @@ export function SignInPage() {
     setError('');
     try {
       await signIn(id);
-      const destination = search.get('returnTo') ?? '/projects';
-      navigate(
-        (/^\/projects(?:\/|\?|$)/.test(destination) ||
-          destination === '/invite') &&
-          !destination.includes('\\')
-          ? destination
-          : '/projects',
-        { replace: true },
-      );
+      enter();
     } catch (failure) {
       setError(
         failure instanceof Error
@@ -78,12 +73,28 @@ export function SignInPage() {
   return (
     <main className="auth-layout">
       <section className="auth-main">
-        <Link to="/" className="auth-back text-link">
-          Back to home
-        </Link>
+        {switching ? (
+          <button
+            className="auth-back text-link"
+            disabled={pending !== null}
+            onClick={() => {
+              if (location.state?.fromAccountControls) navigate(-1);
+              else navigate('/projects', { replace: true });
+            }}
+          >
+            Cancel
+          </button>
+        ) : (
+          <Link to="/" className="auth-back text-link">
+            Back to home
+          </Link>
+        )}
         <div className="auth-form">
           <Brand />
-          <h1>Sign in</h1>
+          <h1>{switching ? 'Switch account' : 'Sign in'}</h1>
+          {switching && currentUser && (
+            <p>Currently signed in as {currentUser.email}.</p>
+          )}
           <form
             onSubmit={(event) => void emailSignIn(event)}
             className="email-sign-in"
@@ -142,7 +153,10 @@ export function SignInPage() {
                 <button
                   className="identity-option"
                   key={user.id}
-                  disabled={pending !== null}
+                  disabled={
+                    pending !== null ||
+                    (switching && currentUser?.id === user.id)
+                  }
                   onClick={() => void select(user.id)}
                 >
                   <Avatar name={user.displayName} userId={user.id} />
@@ -151,7 +165,11 @@ export function SignInPage() {
                     <small>{user.email}</small>
                   </span>
                   <span>
-                    {pending === user.id ? 'Signing in…' : 'Continue'}
+                    {switching && currentUser?.id === user.id
+                      ? 'Current account'
+                      : pending === user.id
+                        ? 'Signing in…'
+                        : 'Continue'}
                   </span>
                 </button>
               ))}

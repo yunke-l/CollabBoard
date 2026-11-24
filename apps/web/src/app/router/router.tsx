@@ -1,5 +1,10 @@
 import { createBrowserRouter, Link } from 'react-router';
-import { AppLayout, PublicLayout, SessionBoundary } from '../layouts/layouts';
+import {
+  AppLayout,
+  PublicLayout,
+  SampleLayout,
+  SessionBoundary,
+} from '../layouts/layouts';
 import { EntryPage } from '../../pages/entry/page';
 import { SignInPage } from '../../pages/auth/page';
 import { AccountFlow } from '../../pages/auth/account-flow';
@@ -11,6 +16,8 @@ import { SettingsPage } from '../../pages/settings/page';
 import { ArchivedTasksPage } from '../../pages/archived-tasks/page';
 import { NotificationsPage } from '../../pages/notifications/page';
 import { ActivityPage } from '../../pages/activity/page';
+
+import { ProjectLayout } from '../layouts/project-layout';
 
 function NotFound() {
   return (
@@ -40,12 +47,30 @@ export const router = createBrowserRouter([
     errorElement: <RouteError />,
     children: [
       { path: '/', element: <EntryPage /> },
-      { path: '/demo', element: <BoardPage sample /> },
-      { path: '/demo/tasks/:taskId', element: <BoardPage sample /> },
       { path: '/invite', element: <InvitationPage /> },
     ],
   },
+  {
+    element: <SampleLayout />,
+    errorElement: <RouteError />,
+    children: [
+      {
+        path: '/demo',
+        element: <ProjectLayout sample />,
+        children: [
+          { index: true, element: <BoardPage sample /> },
+          { path: 'activity', element: <ActivityPage /> },
+          { path: 'tasks/:taskId', element: <BoardPage sample /> },
+        ],
+      },
+    ],
+  },
   { path: '/sign-in', element: <SignInPage />, errorElement: <RouteError /> },
+  {
+    path: '/switch-account',
+    element: <SignInPage switching />,
+    errorElement: <RouteError />,
+  },
   {
     path: '/sign-up',
     element: <AccountFlow key="sign-up" kind="sign-up" />,
@@ -70,17 +95,17 @@ export const router = createBrowserRouter([
         children: [
           { path: '/projects', element: <ProjectsPage /> },
           { path: '/notifications', element: <NotificationsPage /> },
-          { path: '/projects/:projectId/board', element: <BoardPage /> },
-          { path: '/projects/:projectId/members', element: <MembersPage /> },
-          { path: '/projects/:projectId/activity', element: <ActivityPage /> },
-          { path: '/projects/:projectId/settings', element: <SettingsPage /> },
           {
-            path: '/projects/:projectId/archived-tasks',
-            element: <ArchivedTasksPage />,
-          },
-          {
-            path: '/projects/:projectId/tasks/:taskId',
-            element: <BoardPage />,
+            path: '/projects/:projectId',
+            element: <ProjectLayout />,
+            children: [
+              { path: 'board', element: <BoardPage /> },
+              { path: 'members', element: <MembersPage /> },
+              { path: 'archived-tasks', element: <ArchivedTasksPage /> },
+              { path: 'activity', element: <ActivityPage /> },
+              { path: 'settings', element: <SettingsPage /> },
+              { path: 'tasks/:taskId', element: <BoardPage /> },
+            ],
           },
         ],
       },

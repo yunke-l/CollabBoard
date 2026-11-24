@@ -58,7 +58,7 @@ export function ConnectionStatus() {
               void client.invalidateQueries({
                 predicate: (query) =>
                   query.queryKey[1] === hint.projectId ||
-                  ['projects', 'notifications', 'trial'].includes(
+                  ['projects', 'notifications'].includes(
                     String(query.queryKey[0]),
                   ),
               });

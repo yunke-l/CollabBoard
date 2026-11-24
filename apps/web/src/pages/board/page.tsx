@@ -1,14 +1,16 @@
-import { useRef, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ChartNoAxesColumnIncreasing,
-  Columns3,
-  Layers,
-  Plus,
-  Search,
-  UserRound,
-} from 'lucide-react';
+  MemberSelect,
+  assigneeOptions,
+} from '../../features/projects/member-select';
+import { useRef, useState } from 'react';
+import {
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from 'react-router';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ChartNoAxesColumnIncreasing, Columns3, Search } from 'lucide-react';
 import {
   priorities,
   projectCapabilities,
@@ -16,6 +18,7 @@ import {
   taskStatuses,
   type BoardSnapshot,
   type TaskStatus,
+  type Task,
   type MemberSnapshot,
   type TaskResult,
 } from '@collabboard/contracts';
@@ -29,25 +32,58 @@ import {
 } from '../../shared/ui/common';
 import { useSession } from '../../app/providers/session';
 import { useOnline } from '../../shared/lib/use-online';
-import { TrialControls } from '../../features/trials/trial-controls';
+import { SelectControl } from '../../shared/ui/select-control';
+import { useProjectControls } from '../../app/layouts/project-layout';
 import { TaskBoard, dueDateLabel } from '../../features/board/task-board';
-import { CreateTaskDialog } from '../../features/tasks/create-task-dialog';
 import { TaskDetail } from '../../features/tasks/task-detail';
 import { useProjectAccess } from '../../features/projects/use-project-access';
 
+import { SampleTaskHistory } from '../../features/tasks/sample-task-history';
+
 const taskFilterKeys = ['q', 'priority', 'status', 'assignee'] as const;
+
+function moveInBoard(
+  allTasks: Task[],
+  task: Task,
+  status: TaskStatus,
+  beforeTaskId: string | null,
+) {
+  const taskId = task.id;
+  return taskStatuses.flatMap((column) => {
+    const tasks = allTasks
+      .filter((item) => item.status === column && item.id !== taskId)
+      .sort((a, b) => a.position - b.position);
+    if (column === status) {
+      const before = beforeTaskId
+        ? tasks.findIndex((item) => item.id === beforeTaskId)
+        : tasks.length;
+      tasks.splice(before < 0 ? tasks.length : before, 0, {
+        ...task,
+        status,
+      });
+    }
+    return tasks.map((item, position) => ({ ...item, position }));
+  });
+}
 
 export function BoardPage({ sample = false }: { sample?: boolean }) {
   const { projectId, taskId } = useParams();
   const { user } = useSession();
   const navigate = useNavigate();
+  const location = useLocation();
   const client = useQueryClient();
   const [search, setSearch] = useSearchParams();
   const currentSearch = useRef(search);
   currentSearch.current = search;
   const online = useOnline();
-  const [creating, setCreating] = useState<TaskStatus | null>(null);
-  const [moving, setMoving] = useState(false);
+  const {
+    openCreate,
+    moving,
+    setMoving,
+    sampleBoard,
+    sampleTasks,
+    setSampleTasks,
+  } = useProjectControls();
   const [moveError, setMoveError] = useState('');
   const moveLock = useRef(false);
   const moveAttempt = useRef<{ content: string; requestId: string } | null>(
@@ -62,7 +98,7 @@ export function BoardPage({ sample = false }: { sample?: boolean }) {
         signal,
       }),
     refetchInterval: sample ? false : 30000,
-    refetchOnMount: 'always',
+    refetchOnMount: sample ? false : 'always',
     refetchOnWindowFocus: true,
     structuralSharing: (old, next) =>
       old &&
@@ -80,16 +116,24 @@ export function BoardPage({ sample = false }: { sample?: boolean }) {
     refetchInterval: 30000,
   });
   useProjectAccess(id, sample ? null : (query.error ?? memberQuery.error));
-  const openCreate = (status: TaskStatus) => {
-    setCreating(status);
-    void memberQuery.refetch();
-  };
   async function move(
     taskId: string,
     status: TaskStatus,
     beforeTaskId: string | null,
   ) {
-    if (moveLock.current || !online || sample) return;
+    if (sample) {
+      const initial = query.data?.tasks;
+      if (initial)
+        setSampleTasks((current) => {
+          const tasks = current ?? initial;
+          const task = tasks.find((item) => item.id === taskId);
+          return task
+            ? moveInBoard(tasks, task, status, beforeTaskId)
+            : current;
+        });
+      return;
+    }
+    if (moveLock.current || !online) return;
     const key = ['board', id, user?.id];
     const snapshot = client.getQueryData<BoardSnapshot>(key);
     const task = snapshot?.tasks.find((item) => item.id === taskId);
@@ -113,21 +157,7 @@ export function BoardPage({ sample = false }: { sample?: boolean }) {
     if (moveAttempt.current?.content !== content)
       moveAttempt.current = { content, requestId: crypto.randomUUID() };
     await client.cancelQueries({ queryKey: key });
-    const columns = taskStatuses.flatMap((column) => {
-      const tasks = snapshot.tasks
-        .filter((item) => item.status === column && item.id !== taskId)
-        .sort((a, b) => a.position - b.position);
-      if (column === status) {
-        const before = beforeTaskId
-          ? tasks.findIndex((item) => item.id === beforeTaskId)
-          : tasks.length;
-        tasks.splice(before < 0 ? tasks.length : before, 0, {
-          ...task,
-          status,
-        });
-      }
-      return tasks.map((item, position) => ({ ...item, position }));
-    });
+    const columns = moveInBoard(snapshot.tasks, task, status, beforeTaskId);
     client.setQueryData<BoardSnapshot>(key, { ...snapshot, tasks: columns });
     try {
       await api<TaskResult>(`/tasks/${taskId}/move`, {
@@ -170,9 +200,9 @@ export function BoardPage({ sample = false }: { sample?: boolean }) {
   const suffix = search.size ? `?${search.toString()}` : '';
   if (query.isPending)
     return (
-      <main className="content">
+      <>
         <LoadingState />
-      </main>
+      </>
     );
   if (
     !query.data ||
@@ -181,14 +211,15 @@ export function BoardPage({ sample = false }: { sample?: boolean }) {
       [401, 403, 404].includes(query.error.status))
   )
     return (
-      <main className="content">
+      <>
         <ErrorState
           error={query.error ?? new Error('Unable to load the board.')}
           retry={() => void query.refetch()}
         />
-      </main>
+      </>
     );
-  const { project, tasks } = query.data;
+  const { project } = query.data;
+  const tasks = sample && sampleTasks ? sampleTasks : query.data.tasks;
   const canCreate =
     !sample &&
     projectCapabilities(project.role, project.status, false, online)
@@ -210,18 +241,15 @@ export function BoardPage({ sample = false }: { sample?: boolean }) {
   const selected = tasks.find((task) => task.id === taskId);
   const closeTask = () =>
     navigate(
-      !sample && search.get('from') === 'archived'
-        ? `/projects/${id}/archived-tasks`
-        : base + suffix,
+      sample && location.state?.fromSampleActivity
+        ? '/demo/activity' + suffix
+        : !sample && search.get('from') === 'archived'
+          ? `/projects/${id}/archived-tasks`
+          : base + suffix,
       { replace: true },
     );
   return (
-    <main className={`content board-content ${sample ? 'sample-content' : ''}`}>
-      {!online && (
-        <Notice>
-          You are offline. New changes are paused until your connection returns.
-        </Notice>
-      )}
+    <>
       {query.isError && (
         <Notice>
           The latest refresh failed. Your current view and drafts are kept.{' '}
@@ -240,83 +268,6 @@ export function BoardPage({ sample = false }: { sample?: boolean }) {
           {moveError}
         </p>
       )}
-      {!sample && project.status !== 'active' && (
-        <Notice>
-          This project is archived and read only.{' '}
-          {project.role === 'Owner' && (
-            <Link className="text-link" to={`/projects/${id}/settings`}>
-              Open project settings to restore it
-            </Link>
-          )}
-        </Notice>
-      )}
-      <div className="page-heading project-heading">
-        <span className="project-symbol">
-          <Layers size={24} />
-        </span>
-        <div className="grow">
-          <div className="title-row">
-            <h1>{project.name}</h1>
-            <span className="badge">{sample ? 'Read only' : project.role}</span>
-          </div>
-          {project.description && <p>{project.description}</p>}
-        </div>
-        {sample && (
-          <div className="avatar-group">
-            <Avatar name="Alex Morgan" />
-            <Avatar name="Jamie Lee" />
-            <Avatar name="Sam Kim" />
-          </div>
-        )}
-        {sample && (
-          <Link to={user ? '/projects' : '/sign-in'} className="text-link">
-            Create project
-          </Link>
-        )}
-        {canCreate && (
-          <button
-            className="button primary"
-            onClick={() => openCreate('todo')}
-            disabled={moving}
-          >
-            <Plus size={18} />
-            New task
-          </button>
-        )}
-      </div>
-      {sample && <TrialControls />}
-      {!sample && project.isTrial && (
-        <Notice>
-          Trial project · expires{' '}
-          {new Date(project.expiresAt!).toLocaleString('en')}. This project has
-          its own private tasks and members.
-        </Notice>
-      )}
-      <div className="project-tabs">
-        <span>
-          <Columns3 size={18} />
-          Board
-        </span>
-        {!sample && (
-          <>
-            <Link className="text-link" to={`/projects/${id}/members`}>
-              Members
-            </Link>
-            <Link className="text-link" to={`/projects/${id}/archived-tasks`}>
-              Archived tasks
-            </Link>
-            <Link className="text-link" to={`/projects/${id}/activity`}>
-              Activity
-            </Link>
-            {project.role === 'Owner' && (
-              <Link className="text-link" to={`/projects/${id}/settings`}>
-                Settings
-              </Link>
-            )}
-          </>
-        )}
-        <span className="muted">{tasks.length} tasks</span>
-      </div>
       <div className="board-toolbar">
         <label className="search-field">
           <Search size={18} />
@@ -328,62 +279,51 @@ export function BoardPage({ sample = false }: { sample?: boolean }) {
             onChange={(event) => setFilter('q', event.target.value)}
           />
         </label>
-        <label className="filter-field" data-active={!!search.get('priority')}>
-          <ChartNoAxesColumnIncreasing size={15} aria-hidden="true" />
-          <select
-            aria-label="Filter by priority"
-            value={search.get('priority') ?? ''}
-            onChange={(event) => setFilter('priority', event.target.value)}
-          >
-            <option value="">All priorities</option>
-            {priorities.map((priority) => (
-              <option value={priority} key={priority}>
-                {priority[0]!.toUpperCase() + priority.slice(1)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="filter-field" data-active={!!search.get('status')}>
-          <Columns3 size={15} aria-hidden="true" />
-          <select
-            aria-label="Filter by status"
-            value={search.get('status') ?? ''}
-            onChange={(event) => setFilter('status', event.target.value)}
-          >
-            <option value="">All statuses</option>
-            {taskStatuses.map((status) => (
-              <option key={status} value={status}>
-                {statusLabels[status]}
-              </option>
-            ))}
-          </select>
-        </label>
-        {
-          <label
-            className="filter-field"
-            data-active={!!search.get('assignee')}
-          >
-            <UserRound size={15} aria-hidden="true" />
-            <select
-              aria-label="Filter by assignee"
-              value={search.get('assignee') ?? ''}
-              onChange={(event) => setFilter('assignee', event.target.value)}
-            >
-              <option value="">All assignees</option>
-              {sample
-                ? ['Alex Morgan', 'Jamie Lee', 'Sam Kim'].map((name) => (
-                    <option key={name}>{name}</option>
-                  ))
-                : memberQuery.data?.members
-                    .filter((member) => member.role !== 'Viewer')
-                    .map((member) => (
-                      <option key={member.id} value={member.id}>
-                        {member.displayName}
-                      </option>
-                    ))}
-            </select>
-          </label>
-        }
+        <SelectControl
+          icon={ChartNoAxesColumnIncreasing}
+          active={!!search.get('priority')}
+          aria-label="Filter by priority"
+          value={search.get('priority') ?? ''}
+          onChange={(event) => setFilter('priority', event.target.value)}
+        >
+          <option value="">All priorities</option>
+          {priorities.map((priority) => (
+            <option value={priority} key={priority}>
+              {priority[0]!.toUpperCase() + priority.slice(1)}
+            </option>
+          ))}
+        </SelectControl>
+        <SelectControl
+          icon={Columns3}
+          active={!!search.get('status')}
+          aria-label="Filter by status"
+          value={search.get('status') ?? ''}
+          onChange={(event) => setFilter('status', event.target.value)}
+        >
+          <option value="">All statuses</option>
+          {taskStatuses.map((status) => (
+            <option key={status} value={status}>
+              {statusLabels[status]}
+            </option>
+          ))}
+        </SelectControl>
+        <MemberSelect
+          active={!!search.get('assignee')}
+          aria-label="Filter by assignee"
+          value={search.get('assignee') ?? ''}
+          options={
+            sample
+              ? ['Alex Morgan', 'Jamie Lee', 'Sam Kim'].map((name) => ({
+                  value: name,
+                  label: name,
+                }))
+              : assigneeOptions(memberQuery.data?.members)
+          }
+          placeholder="All assignees"
+          emptyLabel="No assignees available"
+          loadFailed={memberQuery.isError}
+          onChange={(event) => setFilter('assignee', event.target.value)}
+        />
         <button
           type="button"
           className="clear-filters"
@@ -412,7 +352,7 @@ export function BoardPage({ sample = false }: { sample?: boolean }) {
           selectedColumn={column}
           onColumnChange={(status) => setFilter('column', status)}
           {...(canCreate ? { onAdd: openCreate } : {})}
-          {...(canCreate
+          {...(sample || canCreate
             ? {
                 onMove: (
                   taskId: string,
@@ -427,23 +367,14 @@ export function BoardPage({ sample = false }: { sample?: boolean }) {
           moving={moving}
         />
       )}
-      {creating && (
-        <CreateTaskDialog
-          projectId={id}
-          status={creating}
-          members={memberQuery.data?.members ?? []}
-          canWrite={canCreate}
-          onClose={() => setCreating(null)}
-        />
-      )}
       {taskId && !sample && (
         <TaskDetail
           key={taskId}
           taskId={taskId}
           project={project}
-          members={memberQuery.data?.members ?? []}
+          members={memberQuery.data?.members}
+          membersFailed={memberQuery.isError}
           onClose={closeTask}
-          onMove={move}
           moving={moving}
         />
       )}
@@ -462,11 +393,26 @@ export function BoardPage({ sample = false }: { sample?: boolean }) {
           {selected ? (
             <>
               <h1 className="task-title">{selected.title}</h1>
-              {sample && <span className="badge">Read-only sample</span>}
               <dl className="task-properties">
                 <dt>Status</dt>
                 <dd className="task-status" data-status={selected.status}>
-                  {statusLabels[selected.status]}
+                  <select
+                    aria-label="Sample task status"
+                    value={selected.status}
+                    onChange={(event) =>
+                      void move(
+                        selected.id,
+                        event.target.value as TaskStatus,
+                        null,
+                      )
+                    }
+                  >
+                    {taskStatuses.map((value) => (
+                      <option key={value} value={value}>
+                        {statusLabels[value]}
+                      </option>
+                    ))}
+                  </select>
                 </dd>
                 <dt>Priority</dt>
                 <dd className={`priority ${selected.priority}`}>
@@ -490,12 +436,15 @@ export function BoardPage({ sample = false }: { sample?: boolean }) {
                   <p className="plain-text">{selected.description}</p>
                 </section>
               )}
+              {sampleBoard && (
+                <SampleTaskHistory board={sampleBoard} taskId={selected.id} />
+              )}
             </>
           ) : (
             <p>This task is missing or no longer accessible.</p>
           )}
         </Dialog>
       )}
-    </main>
+    </>
   );
 }

@@ -1,4 +1,14 @@
-import { Link } from 'react-router';
+import {
+  Activity,
+  ArrowUpRight,
+  CheckSquare,
+  Folder,
+  Mail,
+  MessageSquare,
+  Paperclip,
+  Users,
+} from 'lucide-react';
+import { Link, useLocation } from 'react-router';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import type { ActivityEntry, CursorPage } from '@collabboard/contracts';
 import { useSession } from '../../app/providers/session';
@@ -42,6 +52,99 @@ const fields: Record<string, string> = {
   archivedAt: 'Archive state',
   position: 'Position',
 };
+const eventIcons = {
+  project: Folder,
+  task: CheckSquare,
+  member: Users,
+  invitation: Mail,
+  comment: MessageSquare,
+  attachment: Paperclip,
+};
+const dayFormat = new Intl.DateTimeFormat('en', {
+  month: 'long',
+  day: 'numeric',
+  year: 'numeric',
+});
+const timeFormat = new Intl.DateTimeFormat('en', {
+  hour: 'numeric',
+  minute: '2-digit',
+});
+
+function ActivityDay({
+  day,
+  entries,
+  projectId,
+  taskId,
+}: {
+  day: string;
+  entries: ActivityEntry[];
+  projectId: string;
+  taskId?: string | undefined;
+}) {
+  const location = useLocation();
+  return (
+    <div className="activity-day">
+      <h3>{day}</h3>
+      <ol>
+        {entries.map((entry) => {
+          const kind = entry.action.split('.')[0] as keyof typeof eventIcons;
+          const Icon = eventIcons[kind] ?? Activity;
+          return (
+            <li key={entry.id}>
+              <span
+                className="activity-marker"
+                data-kind={kind}
+                aria-hidden="true"
+              >
+                <Icon size={16} />
+              </span>
+              <div className="activity-item">
+                <div className="activity-line">
+                  <p>
+                    <strong>{entry.actorName}</strong>
+                    {!entry.actorActive && (
+                      <small> (left the project)</small>
+                    )}{' '}
+                    {actions[entry.action] ?? 'updated the project'}
+                    {typeof entry.changes.memberId === 'string' &&
+                    entry.people[entry.changes.memberId]
+                      ? ` · ${entry.people[entry.changes.memberId]}`
+                      : ''}
+                  </p>
+                  <time dateTime={entry.createdAt}>
+                    {timeFormat.format(new Date(entry.createdAt))}
+                  </time>
+                </div>
+                {!taskId && entry.taskId && (
+                  <Link
+                    className="activity-task"
+                    to={
+                      projectId === 'sample'
+                        ? {
+                            pathname: `/demo/tasks/${entry.taskId}`,
+                            search: location.search,
+                          }
+                        : `/projects/${projectId}/tasks/${entry.taskId}`
+                    }
+                    state={
+                      projectId === 'sample'
+                        ? { fromSampleActivity: true }
+                        : null
+                    }
+                  >
+                    {entry.taskTitle ?? 'View task'}
+                    <ArrowUpRight size={13} aria-hidden="true" />
+                  </Link>
+                )}
+                <Changes entry={entry} />
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
 function object(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -84,12 +187,12 @@ function Changes({ entry }: { entry: ActivityEntry }) {
       <summary>View changes</summary>
       <dl>
         {roleChanged && (
-          <>
+          <div>
             <dt>Role</dt>
             <dd>
               {String(entry.changes.before)} → {String(entry.changes.after)}
             </dd>
-          </>
+          </div>
         )}
         {keys.map((key) => (
           <div key={key}>
@@ -102,6 +205,37 @@ function Changes({ entry }: { entry: ActivityEntry }) {
         ))}
       </dl>
     </details>
+  );
+}
+
+export function ActivityTimeline({
+  items,
+  projectId,
+  taskId,
+}: {
+  items: ActivityEntry[];
+  projectId: string;
+  taskId?: string | undefined;
+}) {
+  const byDay = new Map<string, ActivityEntry[]>();
+  for (const entry of items) {
+    const day = dayFormat.format(new Date(entry.createdAt));
+    const group = byDay.get(day);
+    if (group) group.push(entry);
+    else byDay.set(day, [entry]);
+  }
+  return (
+    <div className="activity-list">
+      {Array.from(byDay, ([day, entries]) => (
+        <ActivityDay
+          key={day}
+          day={day}
+          entries={entries}
+          projectId={projectId}
+          taskId={taskId}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -147,10 +281,10 @@ export function ActivityFeed({
   };
   return (
     <section
-      className="task-section activity-section"
+      className={taskId ? 'task-section activity-section' : 'activity-section'}
       aria-label={taskId ? 'Task activity' : 'Project activity'}
     >
-      <h2>Activity</h2>
+      <h2>{taskId ? 'Activity' : 'Project activity'}</h2>
       {query.isPending ? (
         <LoadingState />
       ) : query.isError && (!query.data || denied) ? (
@@ -159,37 +293,16 @@ export function ActivityFeed({
         <>
           {query.isError && <ErrorState error={query.error} retry={retry} />}
           {items.length ? (
-            <ol className="activity-list">
-              {items.map((entry) => (
-                <li key={entry.id}>
-                  <p>
-                    <strong>{entry.actorName}</strong>
-                    {!entry.actorActive && (
-                      <small> (left the project)</small>
-                    )}{' '}
-                    {actions[entry.action] ?? 'updated the project'}
-                    {typeof entry.changes.memberId === 'string' &&
-                    entry.people[entry.changes.memberId]
-                      ? ` · ${entry.people[entry.changes.memberId]}`
-                      : ''}
-                  </p>
-                  {!taskId && entry.taskId && (
-                    <Link
-                      className="text-link"
-                      to={`/projects/${projectId}/tasks/${entry.taskId}`}
-                    >
-                      {entry.taskTitle ?? 'View task'}
-                    </Link>
-                  )}
-                  <time dateTime={entry.createdAt}>
-                    {new Date(entry.createdAt).toLocaleString('en')}
-                  </time>
-                  <Changes entry={entry} />
-                </li>
-              ))}
-            </ol>
+            <ActivityTimeline
+              items={items}
+              projectId={projectId}
+              taskId={taskId}
+            />
           ) : !query.isError ? (
-            <p>No activity yet.</p>
+            <div className="empty activity-empty">
+              <Activity size={24} aria-hidden="true" />
+              <p>No activity yet.</p>
+            </div>
           ) : null}
           {query.hasNextPage && (
             <button

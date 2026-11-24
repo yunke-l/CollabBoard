@@ -76,6 +76,7 @@ export class ProjectsController {
       properties: {
         requestId: { type: 'string', format: 'uuid' },
         name: { type: 'string', maxLength: 80 },
+        fromSample: { type: 'boolean' },
         description: { type: 'string', maxLength: 1000 },
       },
     },

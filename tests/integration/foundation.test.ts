@@ -13,7 +13,6 @@ import { DiscussionService } from '../../apps/api/src/modules/discussion/discuss
 import { DispatcherService } from '../../apps/api/src/modules/events/dispatcher.service';
 import type { EventHint } from '@collabboard/contracts';
 import { FilesService } from '../../apps/api/src/modules/files/files.service';
-import { TrialsService } from '../../apps/api/src/modules/trials/trials.service';
 import { LocalPrivateStorage } from '../../apps/api/src/platform/storage/private-storage';
 import { consumeRate } from '../../apps/api/src/platform/http/rate-limit';
 import { MaintenanceService } from '../../apps/api/src/platform/jobs/maintenance.service';
@@ -35,7 +34,6 @@ let notifications: NotificationsService;
 let discussion: DiscussionService;
 let database: Database;
 let files: FilesService;
-let trials: TrialsService;
 let storage: LocalPrivateStorage;
 let storageRoot: string;
 const owner = localIdentities[0]!.id;
@@ -90,7 +88,6 @@ beforeAll(async () => {
   storageRoot = await mkdtemp(join(tmpdir(), 'collabboard-files-'));
   storage = new LocalPrivateStorage(storageRoot);
   files = new FilesService(database, storage);
-  trials = new TrialsService(database);
 });
 beforeEach(async () => {
   await sql.query('TRUNCATE users CASCADE');
@@ -407,45 +404,6 @@ describe('invitations and current membership', () => {
       }),
     ).rejects.toMatchObject({ response: { code: 'INVITE_REVOKED' } });
     expect((await service.members(owner, project.id)).members).toHaveLength(1);
-  });
-  it('rejects a still-pending invitation as soon as its trial expires', async () => {
-    const { projectId } = await trials.create(owner, {
-      requestId: randomUUID(),
-    });
-    const input = inviteInput();
-    const invitation = await service.createInvitation(owner, projectId, input);
-    expect((await service.previewInvitation(input.token)).projectStatus).toBe(
-      'active',
-    );
-    await sql.query(
-      "UPDATE projects SET expires_at = now() - interval '1 second' WHERE id = $1",
-      [projectId],
-    );
-    expect(await service.previewInvitation(input.token)).toMatchObject({
-      status: 'pending',
-      projectStatus: 'expired',
-    });
-    await expect(
-      service.acceptInvitation(localIdentities[1]!, {
-        token: input.token,
-        requestId: randomUUID(),
-      }),
-    ).rejects.toMatchObject({ response: { code: 'PROJECT_ARCHIVED' } });
-    expect(
-      (
-        await sql.query(
-          'SELECT role FROM project_members WHERE project_id = $1 AND user_id = $2',
-          [projectId, other],
-        )
-      ).rows,
-    ).toEqual([]);
-    expect(
-      (
-        await sql.query('SELECT status FROM invitations WHERE id = $1', [
-          invitation.id,
-        ])
-      ).rows,
-    ).toEqual([{ status: 'pending' }]);
   });
   it('invalidates the old link when regenerating and prevents replay after membership removal', async () => {
     const project = await service.create(owner, createProject());
@@ -2354,7 +2312,6 @@ async function withConcurrentService(
     concurrentNotifications: NotificationsService,
     concurrentDiscussion: DiscussionService,
     concurrentFiles: FilesService,
-    concurrentTrials: TrialsService,
     concurrentDatabase: Database,
   ) => Promise<void>,
 ) {
@@ -2387,7 +2344,6 @@ async function withConcurrentService(
       new NotificationsService(database),
       new DiscussionService(database),
       new FilesService(database, storage),
-      new TrialsService(database),
       database,
     );
   } finally {
@@ -3077,112 +3033,36 @@ describe('private attachment lifecycle', () => {
   });
 });
 
-describe('isolated trial projects and distributed rate limits', () => {
-  it('copies the sample with private new IDs and a seven-day expiry without consuming ordinary project quotas', async () => {
-    const input = { requestId: randomUUID() };
-    const created = await trials.create(owner, input);
-    expect(await trials.create(owner, input)).toEqual(created);
-    const board = await service.board(owner, created.projectId);
-    expect(board.project).toMatchObject({
-      isTrial: true,
-      role: 'Owner',
-      status: 'active',
-    });
+describe('sample projects and distributed rate limits', () => {
+  it('creates a permanent private project from the sample with ordinary quotas and idempotent retries', async () => {
+    const input = { ...createProject(), fromSample: true };
+    const project = await service.create(owner, input);
+    expect(await service.create(owner, input)).toEqual(project);
+    expect((await service.invitations(owner, project.id)).items).toHaveLength(
+      3,
+    );
+    const board = await service.board(owner, project.id);
     expect(board.tasks).toHaveLength(10);
     expect(
       board.tasks.every(
-        (task) => task.attachmentCount === 0 && task.assigneeId === null,
+        (task) => task.projectId === project.id && task.attachmentCount === 0,
       ),
     ).toBe(true);
     expect(board.tasks.some((task) => task.commentCount > 0)).toBe(true);
-    expect(new Date(created.expiresAt).getTime() - Date.now()).toBeGreaterThan(
-      6.99 * 86400000,
-    );
-    await expect(service.board(other, created.projectId)).rejects.toMatchObject(
-      { status: 404 },
-    );
-    await expect(
-      trials.create(owner, { requestId: randomUUID() }),
-    ).rejects.toMatchObject({ response: { code: 'TRIAL_ALREADY_EXISTS' } });
-    for (let index = 0; index < 3; index++)
-      await service.create(owner, createProject());
-  });
-  it('resets atomically with fresh tasks, no memberships or files carried over, and safe retry after cleanup', async () => {
-    const old = await trials.create(owner, { requestId: randomUUID() });
-    const board = await service.board(owner, old.projectId);
-    await sql.query(
-      "INSERT INTO project_members(project_id, user_id, role) VALUES ($1,$2,'Editor')",
-      [old.projectId, other],
-    );
-    const input = { requestId: randomUUID() };
-    const next = await trials.reset(owner, old.projectId, input);
-    expect(await trials.reset(owner, old.projectId, input)).toEqual(next);
-    await expect(service.board(owner, old.projectId)).rejects.toMatchObject({
+    await expect(service.board(other, project.id)).rejects.toMatchObject({
       status: 404,
     });
-    await expect(service.board(other, next.projectId)).rejects.toMatchObject({
-      status: 404,
-    });
-    const resetBoard = await service.board(owner, next.projectId);
-    expect(
-      resetBoard.tasks.every(
-        (task) => !board.tasks.some((oldTask) => oldTask.id === task.id),
-      ),
-    ).toBe(true);
-    await trials.cleanup();
-    expect(await trials.reset(owner, old.projectId, input)).toEqual(next);
-    expect(
-      (await sql.query('SELECT 1 FROM projects WHERE id = $1', [old.projectId]))
-        .rows,
-    ).toEqual([]);
-  });
-  it('expires access immediately before jobs run and preserves ordinary projects during cleanup', async () => {
-    const ordinary = await service.create(owner, createProject());
-    const old = await trials.create(owner, { requestId: randomUUID() });
-    const task = (await service.board(owner, old.projectId)).tasks[0]!;
-    await readyFile(owner, task.id);
     await sql.query(
-      "UPDATE projects SET expires_at = now() - interval '1 second' WHERE id = $1",
-      [old.projectId],
+      "UPDATE projects SET created_at = now() - interval '30 days' WHERE id = $1",
+      [project.id],
     );
-    for (const read of [
-      () => service.board(owner, old.projectId),
-      () => service.task(owner, task.id),
-      () => files.list(owner, task.id),
-      () => discussion.comments(owner, task.id),
-    ])
-      await expect(read()).rejects.toMatchObject({ status: 404 });
-    expect(
-      (await service.list(owner)).items.map((project) => project.id),
-    ).not.toContain(old.projectId);
-    await trials.cleanup();
-    expect((await sql.query('SELECT 1 FROM object_cleanup')).rows).toHaveLength(
-      1,
-    );
-    expect((await service.board(owner, ordinary.id)).project.id).toBe(
-      ordinary.id,
-    );
-    await trials.create(owner, { requestId: randomUUID() });
-  });
-  it('allows only a current trial Owner to reset or clean up and permits safe cleanup retries', async () => {
-    const ordinary = await service.create(owner, createProject());
-    const trial = await trials.create(owner, { requestId: randomUUID() });
+    await new MaintenanceService(database, files, storage).tick();
+    expect((await service.board(owner, project.id)).tasks).toHaveLength(10);
+    await service.create(owner, createProject());
+    await service.create(owner, createProject());
     await expect(
-      trials.reset(owner, ordinary.id, { requestId: randomUUID() }),
-    ).rejects.toMatchObject({ status: 403 });
-    await sql.query(
-      "INSERT INTO project_members(project_id, user_id, role) VALUES ($1,$2,'Editor')",
-      [trial.projectId, other],
-    );
-    await expect(
-      trials.reset(other, trial.projectId, { requestId: randomUUID() }),
-    ).rejects.toMatchObject({ status: 403 });
-    const input = { requestId: randomUUID() };
-    await trials.cleanupOwned(owner, trial.projectId, input);
-    await trials.cleanup();
-    expect(
-      await trials.cleanupOwned(owner, trial.projectId, input),
-    ).toMatchObject({ cleaned: true });
+      service.create(owner, { ...createProject(), fromSample: true }),
+    ).rejects.toMatchObject({ response: { code: 'PROJECT_LIMIT_REACHED' } });
   });
   it('uses database counters across callers, separates users and buckets, and provides retry guidance', async () => {
     await consumeRate(database, owner, [{ name: 'test', limit: 2 }]);
@@ -3266,12 +3146,7 @@ describe('scheduled maintenance', () => {
       [owner],
     );
 
-    const maintenance = new MaintenanceService(
-      database,
-      files,
-      trials,
-      storage,
-    );
+    const maintenance = new MaintenanceService(database, files, storage);
     await maintenance.tick();
     await maintenance.tick();
     expect((await storage.get(keptKey)).toString()).toBe('Hello');
@@ -3331,41 +3206,10 @@ describe('concurrent resource limits and dispatch leases', () => {
     },
   );
   it.skipIf(!process.env.TEST_DATABASE_URL)(
-    'creates only one trial and safely deduplicates simultaneous resets',
-    async () => {
-      await withConcurrentService(async (_p, _n, _d, _f, concurrentTrials) => {
-        const created = await Promise.allSettled(
-          Array.from({ length: 3 }, () =>
-            concurrentTrials.create(owner, { requestId: randomUUID() }),
-          ),
-        );
-        expect(
-          created.filter((item) => item.status === 'fulfilled'),
-        ).toHaveLength(1);
-        const first = created.find((item) => item.status === 'fulfilled')!;
-        if (first.status !== 'fulfilled')
-          throw new Error('Expected one trial.');
-        const input = { requestId: randomUUID() };
-        const resets = await Promise.all([
-          concurrentTrials.reset(owner, first.value.projectId, input),
-          concurrentTrials.reset(owner, first.value.projectId, input),
-        ]);
-        expect(resets[0]).toEqual(resets[1]);
-        expect(
-          (
-            await sql.query(
-              "SELECT 1 FROM projects WHERE is_trial AND status = 'active'",
-            )
-          ).rows,
-        ).toHaveLength(1);
-      });
-    },
-  );
-  it.skipIf(!process.env.TEST_DATABASE_URL)(
     'enforces a shared rate counter under competing connections',
     async () => {
       await withConcurrentService(
-        async (_p, _n, _d, _f, _t, concurrentDatabase) => {
+        async (_p, _n, _d, _f, concurrentDatabase) => {
           const results = await Promise.allSettled(
             Array.from({ length: 20 }, () =>
               consumeRate(concurrentDatabase, owner, [
@@ -3392,7 +3236,7 @@ describe('concurrent resource limits and dispatch leases', () => {
     async () => {
       await joinedProject();
       await withConcurrentService(
-        async (_p, _n, _d, _f, _t, concurrentDatabase) => {
+        async (_p, _n, _d, _f, concurrentDatabase) => {
           const published: string[] = [];
           const transport = {
             async publish(userId: string, hint: EventHint) {

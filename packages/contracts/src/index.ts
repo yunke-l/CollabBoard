@@ -22,7 +22,6 @@ export const limits = {
   filename: 120,
   activeProjects: 3,
   totalProjects: 10,
-  activeTrials: 1,
   members: 10,
   activeTasks: 500,
   totalTasks: 2000,
@@ -55,7 +54,6 @@ export const quotaSchema = z.object({
   resource: z.enum([
     'activeProjects',
     'totalProjects',
-    'activeTrials',
     'members',
     'activeTasks',
     'totalTasks',
@@ -77,7 +75,6 @@ export const apiErrorSchema = z.object({
 export const quotaLabels: Record<Quota['resource'], string> = {
   activeProjects: 'active owned projects',
   totalProjects: 'total owned projects',
-  activeTrials: 'active trial projects',
   members: 'project members',
   activeTasks: 'active tasks',
   totalTasks: 'total tasks',
@@ -129,6 +126,7 @@ export interface AuthSession {
 
 export const mutationSchema = z.object({ requestId: z.uuid() });
 export const createProjectSchema = mutationSchema.extend({
+  fromSample: z.boolean().optional(),
   name: text(limits.projectName, 'Project name', true),
   description: text(limits.projectDescription, 'Description').default(''),
 });
@@ -258,8 +256,6 @@ export interface Project {
   role: Role;
   boardRevision: number;
   createdAt: string;
-  isTrial: boolean;
-  expiresAt: string | null;
 }
 export interface Task {
   id: string;
@@ -298,7 +294,6 @@ export interface InvitationPreview {
   status: Invitation['status'];
   expiresAt: string;
   projectStatus: Project['status'];
-  trialExpiresAt: string | null;
 }
 export interface MemberSnapshot {
   project: Project;
@@ -344,6 +339,11 @@ export interface ActivityEntry {
 export interface BoardSnapshot {
   project: Project;
   tasks: Task[];
+}
+export interface SampleBoardSnapshot extends BoardSnapshot {
+  comments: TaskComment[];
+  activity: ActivityEntry[];
+  attachments: { taskId: string; name: string; summary: string }[];
 }
 export interface ArchivedTaskSnapshot extends CursorPage<Task> {
   project: Project;

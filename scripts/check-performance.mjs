@@ -206,7 +206,7 @@ try {
   const usable = performance.now();
   await page.goto(`${fixture.base}/projects/${projects[0].id}/board`);
   await page
-    .getByText('300 tasks', { exact: true })
+    .getByText('300 of 300 tasks', { exact: true })
     .waitFor({ timeout: 15000 });
   report.coldBoard = {
     tasks: 300,
@@ -238,7 +238,7 @@ try {
   await writerPage.getByRole('button', { name: /Alex Morgan/ }).click();
   await writerPage.waitForURL('**/projects');
   await writerPage.goto(`${fixture.base}/projects/${projects[0].id}/board`);
-  await writerPage.getByText('300 tasks', { exact: true }).waitFor();
+  await writerPage.getByText('300 of 300 tasks', { exact: true }).waitFor();
   await page.exposeFunction('recordLoadRender', (title) => {
     const start = startedTitles.get(title);
     if (start) {

@@ -151,12 +151,6 @@ export function InvitationPage() {
         Invitation expires {new Date(invitation.expiresAt).toLocaleString('en')}
         .
       </p>
-      {invitation.trialExpiresAt && (
-        <Notice>
-          This trial project expires{' '}
-          {new Date(invitation.trialExpiresAt).toLocaleString('en')}.
-        </Notice>
-      )}
       {!available ? (
         <Notice>
           {invitation.projectStatus !== 'active'

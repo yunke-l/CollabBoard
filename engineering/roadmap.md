@@ -40,7 +40,7 @@ Current scope: finish and validate all local features. AWS connections, provisio
 - [x] Comments, tombstones, independent versions, and project/task activity presentation
 - [x] Comment concurrency, rollback, deletion privacy, lock-wait authorization, and desktop/mobile draft acceptance
 - [x] Local private storage, actual-file validation, reservations, and expiring downloads
-- [x] Isolated seven-day trials, expiration, reset, rate limits, and cleanup jobs
+- [x] Interactive public sample, permanent projects from sample tasks, rate limits, and file cleanup jobs
 - [x] Concurrency, revocation, offline, failure, and 500-task acceptance coverage
 
 ## Cloud validation and showcase

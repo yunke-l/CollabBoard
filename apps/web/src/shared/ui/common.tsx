@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from 'react';
 import { Link } from 'react-router';
-import { AlertCircle, Moon, Sun, X } from 'lucide-react';
+import { AlertCircle, Moon, Sun, UserRound, X } from 'lucide-react';
 
 export function Brand() {
   return (
@@ -52,13 +52,15 @@ export function Avatar({
       title={displayName || 'Unassigned'}
       aria-label={displayName || 'Unassigned'}
     >
-      {displayName
-        ? displayName
-            .split(/\s+/)
-            .slice(0, 2)
-            .map((part) => Array.from(part)[0])
-            .join('')
-        : '—'}
+      {displayName ? (
+        displayName
+          .split(/\s+/)
+          .slice(0, 2)
+          .map((part) => Array.from(part)[0])
+          .join('')
+      ) : (
+        <UserRound size={15} aria-hidden="true" />
+      )}
     </span>
   );
 }

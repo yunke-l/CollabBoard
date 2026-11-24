@@ -1,5 +1,6 @@
+import { MemberSelect } from '../../features/projects/member-select';
 import { useRef, useState, type FormEvent } from 'react';
-import { Link, useParams } from 'react-router';
+import { useParams } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   limits,
@@ -21,7 +22,6 @@ import {
   refreshProject,
   useProjectAccess,
 } from '../../features/projects/use-project-access';
-import { TrialControls } from '../../features/trials/trial-controls';
 import { LeaveProject } from '../../features/projects/leave-project';
 
 export function SettingsPage() {
@@ -44,21 +44,21 @@ export function SettingsPage() {
   useProjectAccess(projectId, query.error ?? members.error);
   if (query.isPending)
     return (
-      <main className="content">
+      <div>
         <LoadingState />
-      </main>
+      </div>
     );
   if (query.isError)
     return (
-      <main className="content">
+      <div>
         <ErrorState error={query.error} retry={() => void query.refetch()} />
-      </main>
+      </div>
     );
   return (
     <ProjectSettings
       key={projectId}
       project={query.data}
-      members={members.data?.members ?? []}
+      members={members.data?.members}
       memberError={members.error}
       retryMembers={() => void members.refetch()}
     />
@@ -79,7 +79,7 @@ function ProjectSettings({
   retryMembers,
 }: {
   project: Project;
-  members: MemberSnapshot['members'];
+  members: MemberSnapshot['members'] | undefined;
   memberError: Error | null;
   retryMembers: () => void;
 }) {
@@ -90,6 +90,12 @@ function ProjectSettings({
     description: project.description,
     expectedBoardRevision: project.boardRevision,
   });
+  const eligibleMembers = members
+    ?.filter((member) => member.role !== 'Owner')
+    .map((member) => ({
+      value: member.id,
+      label: `${member.displayName} (${member.role})`,
+    }));
   const [targetId, setTargetId] = useState('');
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [pending, setPending] = useState(false);
@@ -189,26 +195,19 @@ function ProjectSettings({
         ? {
             memberId: targetId,
             memberName:
-              members.find((member) => member.id === targetId)?.displayName ??
+              members?.find((member) => member.id === targetId)?.displayName ??
               'the selected member',
           }
         : {}),
     });
   }
   return (
-    <main className="content settings-content">
-      <Link className="back-link" to={`/projects/${project.id}/board`}>
-        ← Back to board
-      </Link>
+    <div className="settings-content">
       <div className="page-heading">
         <div>
-          <h1>Project settings</h1>
-          <p>
-            {project.name} · {project.role} · {project.status}
-          </p>
+          <h2>Project settings</h2>
         </div>
       </div>
-      <TrialControls project={project} />
       {!online && (
         <Notice>
           You are offline. Your draft is kept. Changes are paused until your
@@ -341,23 +340,22 @@ function ProjectSettings({
             )}
             <label className="field">
               New Owner
-              <select
+              <MemberSelect
                 aria-label="New Owner"
-                value={targetId}
+                value={
+                  eligibleMembers?.some((member) => member.value === targetId)
+                    ? targetId
+                    : ''
+                }
+                options={eligibleMembers}
+                placeholder="Choose a member"
+                emptyLabel="No eligible members"
+                loadFailed={!!memberError}
                 disabled={
                   pending || !capability.canManageProject || !!memberError
                 }
                 onChange={(event) => setTargetId(event.target.value)}
-              >
-                <option value="">Choose a member</option>
-                {members
-                  .filter((member) => member.role !== 'Owner')
-                  .map((member) => (
-                    <option key={member.id} value={member.id}>
-                      {member.displayName} ({member.role})
-                    </option>
-                  ))}
-              </select>
+              />
             </label>
             <button
               className="button"
@@ -366,7 +364,7 @@ function ProjectSettings({
                 !capability.canManageProject ||
                 !targetId ||
                 !!memberError ||
-                !members.some(
+                !members?.some(
                   (member) => member.id === targetId && member.role !== 'Owner',
                 )
               }
@@ -448,6 +446,6 @@ function ProjectSettings({
           </div>
         </Dialog>
       )}
-    </main>
+    </div>
   );
 }

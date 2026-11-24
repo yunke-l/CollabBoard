@@ -1,3 +1,4 @@
+import { useState, type DragEvent } from 'react';
 import {
   CalendarDays,
   CheckCircle2,
@@ -15,6 +16,12 @@ import {
   type TaskStatus,
 } from '@collabboard/contracts';
 import { Avatar } from '../../shared/ui/common';
+
+function insertionIndex(event: DragEvent<HTMLElement>, index: number) {
+  const card = event.currentTarget.querySelector('.task-card')!;
+  const { top, height } = card.getBoundingClientRect();
+  return event.clientY < top + height / 2 ? index : index + 1;
+}
 
 export function dueDateLabel(task: Task) {
   if (!task.dueDate) return null;
@@ -54,6 +61,42 @@ export function TaskBoard({
   canReorder?: boolean;
   moving?: boolean;
 }) {
+  const draggable = !!onMove && !moving;
+  const [draggedTask, setDraggedTask] = useState<Task | null>(null);
+  const [dropHint, setDropHint] = useState<string | null>(null);
+  function endDrag() {
+    setDraggedTask(null);
+    setDropHint(null);
+  }
+  function canDropIn(status: TaskStatus) {
+    return (
+      draggable && draggedTask && (canReorder || draggedTask.status !== status)
+    );
+  }
+  function columnDragOver(event: DragEvent, status: TaskStatus) {
+    if (!canDropIn(status)) return;
+    event.preventDefault();
+    const alreadyLast =
+      draggedTask?.status === status &&
+      !allTasks.some(
+        (task) =>
+          task.status === status && task.position > draggedTask.position,
+      );
+    setDropHint(alreadyLast ? null : status);
+  }
+  function dropInColumn(event: DragEvent, status: TaskStatus) {
+    if (!onMove || !draggedTask || !canDropIn(status)) return;
+    event.preventDefault();
+    endDrag();
+    if (
+      draggedTask.status !== status ||
+      allTasks.some(
+        (task) =>
+          task.status === status && task.position > draggedTask.position,
+      )
+    )
+      onMove(draggedTask.id, status, null);
+  }
   return (
     <>
       <div className="mobile-columns" role="group" aria-label="Board column">
@@ -63,6 +106,15 @@ export function TaskBoard({
             data-status={status}
             aria-pressed={selectedColumn === status}
             onClick={() => onColumnChange(status)}
+            data-drop-target={dropHint === status || undefined}
+            onDragOver={(event) => columnDragOver(event, status)}
+            onDragLeave={() => setDropHint(null)}
+            onDrop={(event) => {
+              if (canDropIn(status)) {
+                dropInColumn(event, status);
+                onColumnChange(status);
+              }
+            }}
           >
             {statusLabels[status]}
             <span>
@@ -88,18 +140,17 @@ export function TaskBoard({
               key={status}
               data-status={status}
               aria-label={statusLabels[status]}
-              onDragOver={(event) => {
-                if (onMove && canReorder && !moving) event.preventDefault();
+              onDragOver={(event) => columnDragOver(event, status)}
+              onDragLeave={(event) => {
+                if (
+                  !event.currentTarget.contains(
+                    event.relatedTarget as Node | null,
+                  )
+                )
+                  setDropHint(null);
               }}
-              onDrop={(event) => {
-                if (!onMove || !canReorder || moving) return;
-                event.preventDefault();
-                const id = event.dataTransfer.getData(
-                  'application/x-collabboard-task',
-                );
-                if (allTasks.some((task) => task.id === id))
-                  onMove(id, status, null);
-              }}
+              data-drop-end={dropHint === status || undefined}
+              onDrop={(event) => dropInColumn(event, status)}
             >
               <header>
                 <Icon size={20} />
@@ -122,30 +173,60 @@ export function TaskBoard({
                   <article
                     className="task-card-shell"
                     key={task.id}
+                    data-drop-before={dropHint === task.id || undefined}
                     onDragOver={(event) => {
-                      if (onMove && canReorder && !moving) {
-                        event.preventDefault();
-                        event.stopPropagation();
-                      }
-                    }}
-                    onDrop={(event) => {
-                      if (!onMove || !canReorder || moving) return;
+                      if (!canDropIn(status) || !draggedTask || !canReorder)
+                        return;
                       event.preventDefault();
                       event.stopPropagation();
-                      const id = event.dataTransfer.getData(
-                        'application/x-collabboard-task',
-                      );
+                      const slot = insertionIndex(event, index);
+                      const before = column[slot]?.id;
+                      const unchanged =
+                        before === draggedTask.id ||
+                        column[slot - 1]?.id === draggedTask.id;
+                      setDropHint(unchanged ? null : (before ?? status));
+                    }}
+                    onDrop={(event) => {
                       if (
-                        id !== task.id &&
-                        allTasks.some((item) => item.id === id)
+                        !onMove ||
+                        !canDropIn(status) ||
+                        !draggedTask ||
+                        !canReorder
                       )
-                        onMove(id, status, task.id);
+                        return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      const slot = insertionIndex(event, index);
+                      const before = column[slot]?.id ?? null;
+                      endDrag();
+                      if (
+                        before !== draggedTask.id &&
+                        column[slot - 1]?.id !== draggedTask.id
+                      )
+                        onMove(draggedTask.id, status, before);
                     }}
                   >
                     <Link
                       className={`task-card ${task.status === 'done' ? 'completed' : ''}`}
                       to={taskUrl(task.id)}
-                      draggable={false}
+                      draggable={draggable}
+                      onDragStart={(event) => {
+                        if (!draggable) return;
+                        event.dataTransfer.setData(
+                          'application/x-collabboard-task',
+                          task.id,
+                        );
+                        event.dataTransfer.effectAllowed = 'move';
+                        const card = event.currentTarget;
+                        const bounds = card.getBoundingClientRect();
+                        event.dataTransfer.setDragImage(
+                          card,
+                          event.clientX - bounds.left,
+                          event.clientY - bounds.top,
+                        );
+                        setDraggedTask(task);
+                      }}
+                      onDragEnd={endDrag}
                     >
                       <div className="card-top">
                         <span className="task-reference">
@@ -184,79 +265,6 @@ export function TaskBoard({
                         />
                       </div>
                     </Link>
-                    {onMove && (
-                      <div className="task-card-actions">
-                        <button
-                          className="icon-button drag-handle"
-                          aria-label={`Drag ${task.title}`}
-                          title={
-                            canReorder
-                              ? 'Drag to reorder'
-                              : 'Clear filters to reorder'
-                          }
-                          disabled={!canReorder || moving}
-                          draggable={canReorder && !moving}
-                          onDragStart={(event) => {
-                            event.dataTransfer.setData(
-                              'application/x-collabboard-task',
-                              task.id,
-                            );
-                            event.dataTransfer.effectAllowed = 'move';
-                          }}
-                        >
-                          ↕
-                        </button>
-                        <label>
-                          <span className="sr-only">Move {task.title} to</span>
-                          <select
-                            aria-label={`Move ${task.title} to`}
-                            value=""
-                            disabled={moving}
-                            onChange={(event) => {
-                              if (event.target.value)
-                                onMove(
-                                  task.id,
-                                  event.target.value as TaskStatus,
-                                  null,
-                                );
-                            }}
-                          >
-                            <option value="">Move to…</option>
-                            {taskStatuses.map((target) => (
-                              <option value={target} key={target}>
-                                {statusLabels[target]}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <button
-                          className="icon-button"
-                          aria-label={`Move ${task.title} up`}
-                          disabled={!canReorder || moving || index === 0}
-                          onClick={() =>
-                            onMove(task.id, status, column[index - 1]!.id)
-                          }
-                        >
-                          ↑
-                        </button>
-                        <button
-                          className="icon-button"
-                          aria-label={`Move ${task.title} down`}
-                          disabled={
-                            !canReorder || moving || index === column.length - 1
-                          }
-                          onClick={() =>
-                            onMove(
-                              task.id,
-                              status,
-                              column[index + 2]?.id ?? null,
-                            )
-                          }
-                        >
-                          ↓
-                        </button>
-                      </div>
-                    )}
                   </article>
                 ))}
                 {column.length === 0 && (

@@ -6,7 +6,6 @@ import type { CursorPage, Project } from '@collabboard/contracts';
 import { api } from '../../shared/api/client';
 import { ErrorState, LoadingState, Notice } from '../../shared/ui/common';
 import { useSession } from '../../app/providers/session';
-import { TrialControls } from '../../features/trials/trial-controls';
 import { CreateProjectDialog } from '../../features/projects/create-project-dialog';
 
 export function ProjectsPage() {
@@ -39,7 +38,6 @@ export function ProjectsPage() {
           New project
         </button>
       </div>
-      <TrialControls />
       <div className="tabs" role="group" aria-label="Project status">
         {(['active', 'archived'] as const).map((value) => (
           <button
@@ -100,12 +98,6 @@ export function ProjectsPage() {
                 <span className="badge">{project.role}</span>
               </div>
               <h2>{project.name}</h2>
-              {project.isTrial && (
-                <small className="badge">
-                  Trial · expires{' '}
-                  {new Date(project.expiresAt!).toLocaleDateString('en')}
-                </small>
-              )}
               {project.description && <p>{project.description}</p>}
               <div className="project-card-footer">
                 {project.status === 'active' ? 'Open board' : 'View project'}

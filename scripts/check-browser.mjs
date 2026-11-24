@@ -325,7 +325,9 @@ async function checkDiscussion({ owner, editor, mobile, editorContext, base }) {
     .filter({ hasText: 'Editor conflict draft' })
     .getByRole('button', { name: 'Delete comment', exact: true })
     .click();
-  await owner
+  await ownerComments
+    .locator('.comment-row')
+    .filter({ hasText: 'Editor conflict draft' })
     .getByRole('button', { name: 'Confirm comment deletion', exact: true })
     .click();
   await ownerComments.getByText('Comment deleted', { exact: true }).waitFor();
@@ -378,7 +380,7 @@ async function checkDiscussion({ owner, editor, mobile, editorContext, base }) {
   await literalRow
     .getByRole('button', { name: 'Delete comment', exact: true })
     .click();
-  await owner
+  await literalRow
     .getByRole('button', { name: 'Confirm comment deletion', exact: true })
     .click();
   await eventually(
@@ -415,9 +417,7 @@ async function checkDiscussion({ owner, editor, mobile, editorContext, base }) {
     path: resolve(output, 'project-activity.png'),
     fullPage: true,
   });
-  await owner
-    .getByRole('link', { name: '← Back to board', exact: true })
-    .click();
+  await owner.getByRole('link', { name: 'Board', exact: true }).click();
   await owner.getByRole('link', { name: 'Members', exact: true }).click();
   await editorComments
     .getByLabel('Comment', { exact: true })
@@ -449,7 +449,8 @@ async function checkDiscussion({ owner, editor, mobile, editorContext, base }) {
   await editor
     .getByRole('button', { name: 'Close dialog', exact: true })
     .click();
-  await editor.getByRole('link', { name: 'Activity', exact: true }).click();
+  await editor.waitForURL('**/projects');
+  await editor.goto(`${base}/projects/${projectId}/activity`);
   await editor.waitForURL('**/projects');
   assert.equal(await editor.locator('.comment-section').count(), 0);
   assert.deepEqual(
@@ -587,6 +588,47 @@ try {
     page.setDefaultTimeout(12000);
     page.on('pageerror', (error) => errors.push(error.message));
   }
+
+  await owner.goto(`${base}/demo/activity`);
+  const publicActivity = owner.getByRole('region', {
+    name: 'Project activity',
+  });
+  await publicActivity
+    .getByRole('link', { name: 'Map the onboarding journey' })
+    .first()
+    .click();
+  const sampleDrawer = owner.getByRole('dialog');
+  const sampleComments = sampleDrawer.getByRole('region', {
+    name: 'Task comments',
+  });
+  await sampleComments
+    .getByText('The current map starts at sign-in.', { exact: false })
+    .waitFor();
+  assert.equal(await sampleComments.getByRole('article').count(), 3);
+  assert.equal(
+    await sampleDrawer
+      .getByRole('region', { name: 'Task activity' })
+      .getByRole('listitem')
+      .count(),
+    4,
+  );
+  await sampleDrawer
+    .getByText('onboarding-outline.md', { exact: true })
+    .click();
+  await sampleDrawer
+    .getByText('Invitation email → sign-in', { exact: false })
+    .waitFor();
+  assert.equal(await sampleDrawer.getByRole('textbox').count(), 0);
+  assert.equal(
+    await sampleDrawer
+      .getByRole('button', { name: /add|post|delete|edit|upload/i })
+      .count(),
+    0,
+  );
+  await sampleDrawer.getByRole('button', { name: 'Close dialog' }).click();
+  await owner.waitForURL('**/demo/activity');
+  await publicActivity.getByText('View changes').first().click();
+  await publicActivity.getByText('In Progress → Done').first().waitFor();
 
   await owner.goto(`${base}/sign-in`);
   await signIn(owner, 'Alex Morgan');
@@ -745,15 +787,13 @@ try {
   await owner
     .getByRole('button', { name: 'Close dialog', exact: true })
     .click();
-  await owner
-    .getByRole('link', { name: '← Back to board', exact: true })
-    .click();
+  await owner.getByRole('link', { name: 'Board', exact: true }).click();
   captureFailure = true;
   await editor
     .getByRole('link', { name: 'Notifications', exact: true })
     .click();
   await editor
-    .getByRole('heading', { name: "You're all caught up", exact: true })
+    .getByRole('heading', { name: 'No notifications', exact: true })
     .waitFor();
   await editorContext.setOffline(true);
   await createTask(owner, 'Prepare launch', localIdentities[1].id);
@@ -795,10 +835,15 @@ try {
     'Browser workflow: offline assignment persistence, reconnection refresh, recipient unread count, individual read, and task navigation passed.',
   );
 
+  const boardCard = (title) =>
+    owner.locator('.task-card').filter({
+      has: owner.getByRole('heading', { name: title, exact: true }),
+    });
+  const target = await boardCard('Review launch').boundingBox();
   await savedMove(owner, () =>
-    owner
-      .getByRole('button', { name: 'Move Prepare launch down', exact: true })
-      .click(),
+    boardCard('Prepare launch').dragTo(boardCard('Review launch'), {
+      targetPosition: { x: 20, y: target.height - 3 },
+    }),
   );
   assert.deepEqual(
     await owner
@@ -808,23 +853,16 @@ try {
     ['Review launch', 'Prepare launch'],
   );
   await owner.getByRole('searchbox', { name: 'Search tasks' }).fill('Prepare');
-  assert.ok(
-    await owner
-      .getByRole('button', { name: 'Drag Prepare launch', exact: true })
-      .isDisabled(),
-  );
   await savedMove(owner, () =>
-    owner
-      .getByLabel('Move Prepare launch to', { exact: true })
-      .selectOption('in_progress'),
+    boardCard('Prepare launch').dragTo(
+      owner.getByRole('region', { name: 'In Progress', exact: true }),
+    ),
   );
   await owner.getByRole('searchbox', { name: 'Search tasks' }).fill('');
   await savedMove(owner, () =>
-    owner
-      .getByRole('button', { name: 'Drag Review launch', exact: true })
-      .dragTo(
-        owner.locator('.task-card-shell').filter({ hasText: 'Prepare launch' }),
-      ),
+    boardCard('Review launch').dragTo(boardCard('Prepare launch'), {
+      targetPosition: { x: 20, y: 2 },
+    }),
   );
   assert.deepEqual(
     await owner
@@ -838,7 +876,7 @@ try {
     fullPage: true,
   });
   console.info(
-    'Browser workflow: assignment, keyboard ordering, filtered movement, and drag passed.',
+    'Browser workflow: assignment, card ordering, filtered movement, and cross-column drag passed.',
   );
 
   // Creating as the second account refreshes its snapshot without waiting for polling.
@@ -965,12 +1003,6 @@ try {
   await editor
     .getByRole('button', { name: 'Close dialog', exact: true })
     .click();
-  await editor
-    .getByRole('link')
-    .filter({
-      has: editor.getByRole('heading', { name: 'Review launch', exact: true }),
-    })
-    .click();
   await editor.waitForURL('**/projects');
   await editor
     .getByText('This project is missing or your access has been removed.', {
@@ -1020,10 +1052,12 @@ try {
     .click();
   await savedMove(mobile, () =>
     mobile
-      .getByLabel('Move Owner draft to', { exact: true })
-      .selectOption('done'),
+      .locator('.task-card')
+      .filter({
+        has: mobile.getByRole('heading', { name: 'Owner draft', exact: true }),
+      })
+      .dragTo(mobile.getByRole('button', { name: /^Done/ })),
   );
-  await mobile.getByRole('button', { name: /^Done/ }).click();
   await mobile
     .getByRole('heading', { name: 'Owner draft', exact: true })
     .waitFor();
@@ -1092,9 +1126,7 @@ try {
   await owner
     .getByRole('button', { name: 'Close dialog', exact: true })
     .click();
-  await owner
-    .getByRole('link', { name: '← Back to board', exact: true })
-    .click();
+  await owner.getByRole('link', { name: 'Board', exact: true }).click();
   await openTask(owner, 'Owner draft');
   await owner
     .getByRole('button', { name: 'Archive task', exact: true })
@@ -1161,9 +1193,7 @@ try {
   await owner
     .getByRole('heading', { name: 'No archived tasks', exact: true })
     .waitFor();
-  await owner
-    .getByRole('link', { name: '← Back to board', exact: true })
-    .click();
+  await owner.getByRole('link', { name: 'Board', exact: true }).click();
   await owner.getByRole('link', { name: 'Settings', exact: true }).click();
   await owner
     .getByLabel('Project name', { exact: true })
@@ -1179,9 +1209,7 @@ try {
     path: resolve(output, 'project-settings.png'),
     fullPage: true,
   });
-  await mobile
-    .getByRole('link', { name: '← Back to board', exact: true })
-    .click();
+  await mobile.getByRole('link', { name: 'Board', exact: true }).click();
   await mobile.getByRole('link', { name: 'Settings', exact: true }).click();
   await mobile
     .getByRole('heading', { name: 'Project settings', exact: true })
@@ -1233,9 +1261,7 @@ try {
       .getByRole('button', { name: 'Save changes', exact: true })
       .isDisabled(),
   );
-  await owner
-    .getByRole('link', { name: '← Back to board', exact: true })
-    .click();
+  await owner.getByRole('link', { name: 'Board', exact: true }).click();
   await owner
     .getByText('This project is archived and read only.', { exact: false })
     .waitFor();
@@ -1312,10 +1338,11 @@ try {
     .getByRole('button', { name: 'Close dialog', exact: true })
     .click();
   await editor.getByRole('link', { name: 'Members', exact: true }).click();
-  await editor.getByText('Owner', { exact: true }).waitFor();
   await editor
-    .getByRole('link', { name: '← Back to board', exact: true })
-    .click();
+    .locator('.member-list')
+    .getByText('Owner', { exact: true })
+    .waitFor();
+  await editor.getByRole('link', { name: 'Board', exact: true }).click();
   await editor.getByRole('link', { name: 'Settings', exact: true }).click();
   await editor
     .getByRole('button', { name: 'Archive project', exact: true })
@@ -1539,13 +1566,13 @@ try {
         workflows: [
           'invitations and quotas',
           'task edits and conflicts',
-          'movement and keyboard ordering',
+          'movement and drag ordering',
           'notifications and read retries',
           'comments and activity',
           'lifecycle and ownership',
           'offline drafts and revocation',
           'private attachments and live hints',
-          'trial reset and cleanup',
+          'permanent projects and interactive sample',
           '500-task board',
           'email identity and session recovery',
           'mobile layout and themes',
@@ -1556,7 +1583,7 @@ try {
     ) + '\n',
   );
   console.info(
-    `Browser checks passed: ${engine} ${browser.version()}, independent accounts, tasks, collaboration, attachments, trials, identity, mobile, and themes.`,
+    `Browser checks passed: ${engine} ${browser.version()}, independent accounts, tasks, collaboration, attachments, sample projects, identity, mobile, and themes.`,
   );
   console.info(`Screenshots: ${output}`);
 } catch (error) {

@@ -11,7 +11,7 @@ import {
 import { LocalAccounts } from '../../adapters/identity/local-accounts.js';
 import { requestBody } from '../../platform/http/request-body.js';
 import { validate } from '../projects/projects.controller.js';
-import { LocalIdentityProvider, setRefreshCookie } from './identity.service.js';
+import { LocalIdentityProvider } from './identity.service.js';
 
 @ApiTags('Development identity')
 @Controller('auth')
@@ -45,7 +45,7 @@ export class IdentityController {
       input.email,
       input.password,
     );
-    setRefreshCookie(response, refreshToken);
+    this.identity.setSignInCookie(req, response, refreshToken);
     return session;
   }
   @Post('verify-email')
