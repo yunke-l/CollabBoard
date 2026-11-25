@@ -7,14 +7,16 @@ import { useOnline } from '../../shared/lib/use-online';
 
 export function ConnectionStatus() {
   const { user } = useSession();
-  const client = useQueryClient();
   const online = useOnline();
+  if (!user || !online)
+    return <StatusLabel online={online} connected={false} />;
+  return <LiveConnection key={user.id} />;
+}
+
+function LiveConnection() {
+  const client = useQueryClient();
   const [connected, setConnected] = useState(false);
   useEffect(() => {
-    if (!user || !online) {
-      setConnected(false);
-      return;
-    }
     const controller = new AbortController();
     const seen = new Set<string>();
     const reconcile = () => {
@@ -27,6 +29,7 @@ export function ConnectionStatus() {
           const response = await authorizedFetch('/api/events', {
             signal: controller.signal,
           });
+          if (controller.signal.aborted) return;
           if (!response.ok || !response.body)
             throw new Error('Updates are delayed.');
           setConnected(true);
@@ -67,8 +70,8 @@ export function ConnectionStatus() {
         } catch {
           /* Reconcile after the next successful connection. */
         }
-        setConnected(false);
         if (controller.signal.aborted) break;
+        setConnected(false);
         const delay =
           Math.min(30000, 1000 * 2 ** Math.min(attempt++, 5)) *
           (0.5 + Math.random() * 0.5);
@@ -85,7 +88,17 @@ export function ConnectionStatus() {
     }
     void connect();
     return () => controller.abort();
-  }, [user?.id, online, client]);
+  }, [client]);
+  return <StatusLabel connected={connected} online />;
+}
+
+function StatusLabel({
+  connected,
+  online,
+}: {
+  connected: boolean;
+  online: boolean;
+}) {
   return (
     <span
       className="connection-status"

@@ -33,13 +33,17 @@ type Row = Omit<Attachment, 'createdAt'> & {
 type Grant = { purpose: string; id: string; userId: string; expiresAt: number };
 const conflict = (code: string, message: string) =>
   new HttpException({ code, message }, 409);
-const view = ({
-  state: _state,
-  expiresAt: _expiry,
-  objectKey: _key,
-  ...row
-}: Row): Attachment => ({
-  ...row,
+const view = (row: Row): Attachment => ({
+  id: row.id,
+  projectId: row.projectId,
+  taskId: row.taskId,
+  uploaderId: row.uploaderId,
+  uploaderName: row.uploaderName,
+  uploaderActive: row.uploaderActive,
+  originalName: row.originalName,
+  sizeBytes: row.sizeBytes,
+  mediaType: row.mediaType,
+  version: row.version,
   createdAt: new Date(row.createdAt).toISOString(),
 });
 

@@ -426,7 +426,14 @@ export class ProjectsService {
       const last = rows.at(-1);
       return {
         items: rows.map(
-          ({ createdAt: _createdAt, ...invitation }) => invitation,
+          ({ id, projectId, email, role, status, expiresAt }) => ({
+            id,
+            projectId,
+            email,
+            role,
+            status,
+            expiresAt,
+          }),
         ),
         nextCursor:
           result.rows.length > limit && last

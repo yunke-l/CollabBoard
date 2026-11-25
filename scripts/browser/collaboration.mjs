@@ -2,13 +2,7 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { localIdentities } from '../../apps/api/src/adapters/identity/local-identities.ts';
 import { randomBytes, randomUUID } from 'node:crypto';
-import {
-  signIn,
-  createTask,
-  openTask,
-  eventually,
-  savedMove,
-} from './actions.mjs';
+import { signIn, createTask, eventually, savedMove } from './actions.mjs';
 import { checkMoveRecovery } from './movement.mjs';
 import { checkLifecycle } from './lifecycle.mjs';
 export async function checkCollaboration(context) {

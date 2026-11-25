@@ -74,19 +74,15 @@ const report = {
     apiPoolLimit: 10,
   },
 };
-const percentile = (samples, fraction = 0.95) =>
-  samples.length
-    ? Number(
-        [...samples]
-          .sort((a, b) => a - b)
-          [
-            Math.min(
-              samples.length - 1,
-              Math.ceil(samples.length * fraction) - 1,
-            )
-          ].toFixed(2),
-      )
-    : null;
+function percentile(samples, fraction = 0.95) {
+  if (!samples.length) return null;
+  const sorted = [...samples].sort((a, b) => a - b);
+  const index = Math.min(
+    sorted.length - 1,
+    Math.ceil(sorted.length * fraction) - 1,
+  );
+  return Number(sorted[index].toFixed(2));
+}
 async function command(command, args, input) {
   const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'] });
   const chunks = [],

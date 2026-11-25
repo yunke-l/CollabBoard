@@ -166,11 +166,11 @@ function ProjectSettings({
       return;
     setPending(true);
     setError('');
-    const { kind, memberName: _memberName, ...body } = confirmation;
+    const { kind, expectedBoardRevision, memberId, requestId } = confirmation;
     try {
       await api<Project>(`/projects/${project.id}/${kind}`, {
         method: 'POST',
-        body,
+        body: { expectedBoardRevision, memberId, requestId },
       });
       setConfirmation(null);
       await refreshProject(client, project.id);

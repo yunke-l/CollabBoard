@@ -2,7 +2,7 @@ import {
   MemberSelect,
   assigneeOptions,
 } from '../../features/projects/member-select';
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import {
   useLocation,
   useNavigate,
@@ -74,7 +74,9 @@ export function BoardPage({ sample = false }: { sample?: boolean }) {
   const client = useQueryClient();
   const [search, setSearch] = useSearchParams();
   const currentSearch = useRef(search);
-  currentSearch.current = search;
+  useLayoutEffect(() => {
+    currentSearch.current = search;
+  }, [search]);
   const online = useOnline();
   const {
     openCreate,

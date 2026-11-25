@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useState,
@@ -25,11 +26,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [ready, setReady] = useState(false);
   const client = useQueryClient();
-  function clear() {
+  const clear = useCallback(() => {
     setClientSession(null);
     setSession(null);
     client.clear();
-  }
+  }, [client]);
   function establish(next: AuthSession) {
     client.clear();
     setClientSession(next);
@@ -55,7 +56,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('collabboard:session-expired', clear);
       window.removeEventListener('collabboard:session-refreshed', refreshed);
     };
-  }, [client]);
+  }, [clear]);
   useEffect(() => {
     if (!session) return;
     const timer = window.setTimeout(
@@ -83,7 +84,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       window.clearTimeout(timer);
       window.removeEventListener('online', reconnect);
     };
-  }, [session]);
+  }, [clear, session]);
   return (
     <Context.Provider
       value={{

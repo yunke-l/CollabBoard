@@ -56,7 +56,7 @@ export function AttachmentSection({
   const [file, setFile] = useState<File | null>(null);
   const picker = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState(false);
-  const [stage, setStage] = useState('');
+  const [stage, setStage] = useState('Upload attachment');
   const [error, setError] = useState('');
   const [deleting, setDeleting] = useState<Attachment | null>(null);
   const attempt = useRef<Attempt | null>(null);
@@ -112,6 +112,7 @@ export function AttachmentSection({
       requestId: current.requestId,
     });
     if (!parsed.success) {
+      setStage('Retry upload');
       setError(parsed.error.issues[0]!.message);
       return;
     }
@@ -156,9 +157,11 @@ export function AttachmentSection({
         body: { requestId: current.completeId },
       });
       attempt.current = null;
+      setStage('Upload attachment');
       setFile(null);
       if (picker.current) picker.current.value = '';
     } catch (failure) {
+      setStage('Retry upload');
       setError(
         failure instanceof Error
           ? failure.message
@@ -168,7 +171,6 @@ export function AttachmentSection({
       await refresh();
       setPending(false);
       onPending(false);
-      setStage('');
     }
   }
   async function remove() {
@@ -273,7 +275,13 @@ export function AttachmentSection({
               accept=".jpg,.jpeg,.png,.webp,.pdf,.txt"
               disabled={pending || !canUpload}
               onChange={(event) => {
-                setFile(event.target.files?.[0] ?? null);
+                const selected = event.target.files?.[0] ?? null;
+                setFile(selected);
+                setStage(
+                  attempt.current?.file === selected
+                    ? 'Retry upload'
+                    : 'Upload attachment',
+                );
                 setError('');
               }}
             />
@@ -288,11 +296,7 @@ export function AttachmentSection({
                 className="button primary"
                 disabled={!canUpload || pending || disabled}
               >
-                {stage
-                  ? stage
-                  : attempt.current?.file === file
-                    ? 'Retry upload'
-                    : 'Upload attachment'}
+                {stage}
               </button>
             </div>
           )}

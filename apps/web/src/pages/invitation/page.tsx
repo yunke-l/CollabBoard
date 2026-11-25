@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -11,69 +11,61 @@ import { useSession } from '../../app/providers/session';
 import { useOnline } from '../../shared/lib/use-online';
 
 const key = 'collabboard.pending-invitation';
-let memoryCredential: { token: string; expiresAt: number } | null = null;
-function takeCredential() {
-  const fragment = window.location.hash;
-  if (fragment)
-    window.history.replaceState(window.history.state, '', '/invite');
+type Credential = { token: string; expiresAt: number };
+let memoryCredential: Credential | null = null;
+
+function readCredential(fragment: string): Credential | null {
   if (fragment) {
-    memoryCredential = null;
     const parsed = invitationTokenSchema.safeParse(
       new URLSearchParams(fragment.slice(1)).get('token'),
     );
-    if (parsed.success)
-      memoryCredential = {
-        token: parsed.data,
-        expiresAt: Date.now() + 15 * 60 * 1000,
-      };
-    try {
-      sessionStorage.removeItem(key);
-      if (memoryCredential)
-        sessionStorage.setItem(key, JSON.stringify(memoryCredential));
-    } catch {
-      /* The credential remains in memory for this navigation. */
-    }
-    return memoryCredential?.token ?? null;
+    return parsed.success
+      ? { token: parsed.data, expiresAt: Date.now() + 15 * 60 * 1000 }
+      : null;
   }
   if (memoryCredential && memoryCredential.expiresAt > Date.now())
-    return memoryCredential.token;
-  memoryCredential = null;
+    return memoryCredential;
   try {
     const saved = JSON.parse(sessionStorage.getItem(key) ?? 'null');
     if (
       saved?.expiresAt > Date.now() &&
       invitationTokenSchema.safeParse(saved.token).success
-    ) {
-      memoryCredential = saved;
-      return saved.token as string;
-    }
-    sessionStorage.removeItem(key);
+    )
+      return saved;
   } catch {
     /* Reopen the original link if temporary browser storage is unavailable. */
   }
   return null;
 }
-function clearCredential() {
-  memoryCredential = null;
+function storeCredential(credential: Credential | null) {
+  memoryCredential = credential;
   try {
     sessionStorage.removeItem(key);
+    if (credential) sessionStorage.setItem(key, JSON.stringify(credential));
   } catch {
-    /* No persisted credential. */
+    /* The credential remains in memory for this navigation. */
   }
 }
 
 export function InvitationPage() {
-  const [token, setToken] = useState(takeCredential);
   const location = useLocation();
-  useEffect(() => {
-    if (location.hash) setToken(takeCredential());
-  }, [location.hash]);
+  return <InvitationView key={location.hash} fragment={location.hash} />;
+}
+
+function InvitationView({ fragment }: { fragment: string }) {
+  const [credential] = useState(() => readCredential(fragment));
+  const token = credential?.token;
+  useLayoutEffect(() => {
+    if (fragment)
+      window.history.replaceState(window.history.state, '', '/invite');
+    storeCredential(credential);
+  }, [credential, fragment]);
   const { user } = useSession();
   const client = useQueryClient();
   const navigate = useNavigate();
   const online = useOnline();
-  const requestId = useMemo(() => crypto.randomUUID(), [token]);
-  const previewId = useMemo(() => crypto.randomUUID(), [token]);
+  const [requestId] = useState(() => crypto.randomUUID());
+  const [previewId] = useState(() => crypto.randomUUID());
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const query = useQuery({
@@ -97,7 +89,7 @@ export function InvitationPage() {
         method: 'POST',
         body: { token, requestId },
       });
-      clearCredential();
+      storeCredential(null);
       client.removeQueries({ queryKey: ['invitation-preview'] });
       await client.invalidateQueries({ queryKey: ['projects'] });
       navigate(`/projects/${result.projectId}/board`, { replace: true });
@@ -192,7 +184,7 @@ export function InvitationPage() {
       <Link
         className="text-link"
         to={user ? '/projects' : '/'}
-        onClick={clearCredential}
+        onClick={() => storeCredential(null)}
       >
         Cancel
       </Link>

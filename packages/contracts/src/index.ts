@@ -198,9 +198,17 @@ export const mediaTypes = [
   'application/pdf',
   'text/plain',
 ] as const;
+export function hasSafeFilenameCharacters(name: string) {
+  for (const char of name) {
+    const code = char.charCodeAt(0);
+    if (code < 32 || code === 127 || char === '/' || char === '\\')
+      return false;
+  }
+  return true;
+}
 export const initializeAttachmentSchema = mutationSchema.extend({
   originalName: text(limits.filename, 'Filename', true).refine(
-    (value) => !/[\u0000-\u001f\u007f/\\]/u.test(value),
+    hasSafeFilenameCharacters,
     'Use a filename without paths or control characters.',
   ),
   sizeBytes: z.number().int().min(1).max(limits.attachmentBytes),

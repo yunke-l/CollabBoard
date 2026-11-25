@@ -148,8 +148,6 @@ export function Dialog({
   busy?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
   useEffect(() => {
     const element = ref.current;
     const trigger =
@@ -170,10 +168,10 @@ export function Dialog({
       aria-busy={busy}
       onCancel={(event) => {
         event.preventDefault();
-        if (!busy) closeRef.current();
+        if (!busy) onClose();
       }}
       onClick={(event) => {
-        if (!busy && event.target === event.currentTarget) closeRef.current();
+        if (!busy && event.target === event.currentTarget) onClose();
       }}
     >
       <div className="dialog-inner">

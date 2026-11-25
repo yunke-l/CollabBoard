@@ -1,3 +1,5 @@
+import { hasSafeFilenameCharacters } from '@collabboard/contracts';
+
 const extensions: Record<string, string[]> = {
   'image/jpeg': ['jpg', 'jpeg'],
   'image/png': ['png'],
@@ -7,7 +9,7 @@ const extensions: Record<string, string[]> = {
 };
 export function validFilename(name: string, type: string) {
   return (
-    !/[\u0000-\u001f\u007f/\\]/u.test(name) &&
+    hasSafeFilenameCharacters(name) &&
     !!extensions[type]?.includes(name.split('.').at(-1)!.toLowerCase())
   );
 }
@@ -15,8 +17,11 @@ export function validateFile(body: Buffer, type: string) {
   if (!body.length) return false;
   if (type === 'text/plain') {
     try {
-      const text = new TextDecoder('utf-8', { fatal: true }).decode(body);
-      return !/[\u0000-\u0008\u000b\u000e-\u001f\u007f]/u.test(text);
+      new TextDecoder('utf-8', { fatal: true }).decode(body);
+      // Plain text permits tab, line feed, form feed, and carriage return.
+      return body.every((byte) =>
+        byte < 32 ? [9, 10, 12, 13].includes(byte) : byte !== 127,
+      );
     } catch {
       return false;
     }

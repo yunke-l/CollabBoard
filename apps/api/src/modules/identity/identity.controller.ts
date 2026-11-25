@@ -75,7 +75,7 @@ export class IdentityController {
     summary: 'Restore a local session through its HttpOnly refresh cookie',
   })
   refresh(@Req() req: Request) {
-    const { refreshToken: _token, ...session } = this.identity.refresh(req);
-    return session;
+    const { user, accessToken, expiresAt } = this.identity.refresh(req);
+    return { user, accessToken, expiresAt };
   }
 }

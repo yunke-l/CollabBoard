@@ -79,6 +79,7 @@ Requirements, design references, and their original archives remain local and ar
 | Command                  | Purpose                                                                    |
 | ------------------------ | -------------------------------------------------------------------------- |
 | `pnpm dev`               | Run API and web development servers                                        |
+| `pnpm lint`              | Check JavaScript, TypeScript, and React Hooks with ESLint                  |
 | `pnpm typecheck`         | Check application, contract, and test types                                |
 | `pnpm test`              | Run contract, integration, and React component tests                       |
 | `pnpm test:web`          | Run web client and React component tests in jsdom                          |
