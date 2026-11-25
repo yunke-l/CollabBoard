@@ -66,8 +66,9 @@ apps/api/migrations/ Versioned PostgreSQL migrations
 packages/contracts/ Shared transport types, validation, limits, capabilities
 infra/local/         Loopback-only PostgreSQL Compose configuration
 engineering/         Development decisions and implementation notes
-tests/integration/   Database, permission, transaction, and environment checks
-scripts/             Repository publication audit
+tests/integration/   Domain integration suites and PostgreSQL migration checks
+scripts/browser/     Independent browser workflows and shared page actions
+scripts/             Acceptance runners, runtime checks, and repository audit
 .github/             CI and dependency updates
 ```
 
@@ -79,7 +80,8 @@ Requirements, design references, and their original archives remain local and ar
 | ------------------------ | -------------------------------------------------------------------------- |
 | `pnpm dev`               | Run API and web development servers                                        |
 | `pnpm typecheck`         | Check application, contract, and test types                                |
-| `pnpm test`              | Run contract, permission, and transaction tests                            |
+| `pnpm test`              | Run contract, integration, and React component tests                       |
+| `pnpm test:web`          | Run web client and React component tests in jsdom                          |
 | `pnpm test:postgres`     | Run all integration tests in an automatically isolated PostgreSQL database |
 | `pnpm test:browser`      | Run isolated two-account browser acceptance checks                         |
 | `pnpm test:performance`  | Run the ten-minute local load and independent database recovery drill      |
@@ -92,9 +94,9 @@ Requirements, design references, and their original archives remain local and ar
 | `pnpm db:rebuild`        | Rebuild the database image and apply available OS patches                  |
 | `pnpm db:down`           | Stop PostgreSQL while retaining its data volume                            |
 
-Tests use embedded PostgreSQL via PGlite when `TEST_DATABASE_URL` is absent. CI runs the same integration suite against a dedicated PostgreSQL 17 service. Set `TEST_DATABASE_URL` only to a disposable, empty test database: integration setup creates tables and resets test data. Never point it at a development or production database.
+Tests use embedded PostgreSQL via PGlite when `TEST_DATABASE_URL` is absent. CI runs the same integration suite against a dedicated PostgreSQL 17 service. Set `TEST_DATABASE_URL` only to a disposable, empty test database: each database integration suite creates and drops its own schema inside that database. To run a single suite against a disposable database, use `pnpm test:postgres tests/integration/migrations.test.ts`. Never point it at a development or production database.
 
-Browser acceptance checks require a completed `pnpm build`, local PostgreSQL, and `pnpm exec playwright install chromium`. Alternatively, set `BROWSER_EXECUTABLE` to a local Chromium/Chrome executable. The runner uses the local `DATABASE_URL` account to create a uniquely named disposable database, applies migrations and synthetic identities, runs independent desktop and mobile browser contexts, and removes its database afterward. It requires database-creation permission and never resets the configured application database. Set `BROWSER_ENGINE=firefox` or `BROWSER_ENGINE=webkit` to exercise another installed Playwright engine. Firefox uses a narrow touch viewport without mobile emulation. Screenshots are saved under the ignored `.local/browser-check/<engine>/` directory. CI runs all three engines. Engine testing does not replace release checks in actual Edge and Safari.
+Browser acceptance checks require a completed `pnpm build`, local PostgreSQL, and `pnpm exec playwright install chromium`. Alternatively, set `BROWSER_EXECUTABLE` to a local Chromium/Chrome executable. The runner uses the local `DATABASE_URL` account to create a uniquely named disposable database, applies migrations and synthetic identities, runs independent desktop and mobile browser contexts, and removes its database afterward. It requires database-creation permission and never resets the configured application database. Set `BROWSER_ENGINE=firefox` or `BROWSER_ENGINE=webkit` to exercise another installed Playwright engine. Firefox uses a narrow touch viewport without mobile emulation. Screenshots are saved under the ignored `.local/browser-check/<engine>/` directory. Run individual scenarios with `pnpm test:browser notifications` or pass several names. Available scenarios are `collaboration`, `notifications`, `discussion`, `attachments`, and `identity`. Each starts with a fresh database and browser contexts. Only a successful full run writes the acceptance report. CI builds once and runs the same artifacts on all three engines, saving a credential-free stage summary on failure. Engine testing does not replace release checks in actual Edge and Safari.
 
 `pnpm test:performance` requires the same local PostgreSQL and Chromium setup. It creates disposable source and restore databases, seeds 20 projects with 300 tasks, ten members and three comments per task, maintains 50 hint streams, and submits 20 reads plus five writes per second for ten minutes. It records at least 100 remote browser renders, a cold 300-task board under 10 Mbps/100 ms conditions, a 500-task board, and exact restored-table comparisons. Results are written to `engineering/validation/local-performance.json`. Run it without concurrent builds or browser suites on a memory-constrained machine. `PERF_DURATION_SECONDS` permits a short harness smoke run, which is explicitly not full acceptance. The recovery drill stops writes and tests logical backup restoration; it does not establish a cloud RPO or point-in-time recovery capability.
 

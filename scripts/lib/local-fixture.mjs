@@ -27,7 +27,7 @@ export async function stopProcess(child) {
   await exited;
   globalThis.clearTimeout(timer);
 }
-export async function createLocalFixture() {
+export async function createLocalFixture({ rateLimits = true } = {}) {
   const configured = new URL(
     process.env.DATABASE_URL ??
       'postgresql://collabboard:collabboard_local@127.0.0.1:5432/collabboard',
@@ -88,7 +88,7 @@ export async function createLocalFixture() {
         WEB_ORIGIN: base,
         DATABASE_URL: url.href,
         LOCAL_STATE_DIR: stateRoot,
-        RATE_LIMITS_ENABLED: 'true',
+        RATE_LIMITS_ENABLED: String(rateLimits),
         BACKGROUND_JOBS: 'true',
       },
       stdio: ['ignore', 'pipe', 'pipe'],

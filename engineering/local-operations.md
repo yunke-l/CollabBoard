@@ -64,7 +64,7 @@ For code rollback, stop the API and select the previous compatible source/build.
 
 ## Repeatable acceptance
 
-`pnpm check` covers formatting, types, embedded tests, builds, compiled HTTP boundaries, and publication audit. `pnpm test:postgres` repeats the suite in an automatically created and removed PostgreSQL database, including concurrency tests. `pnpm test:browser` creates another disposable database/private state directory and exercises independent desktop/mobile contexts. Set `BROWSER_ENGINE=firefox` or `webkit` for the other installed Playwright engines.
+`pnpm check` covers formatting, types, embedded tests, builds, compiled HTTP boundaries, and publication audit. `pnpm test:postgres` repeats the suite in an automatically created and removed PostgreSQL database, including concurrency tests. `pnpm test:browser` creates a disposable database/private state directory for each scenario and exercises independent desktop/mobile contexts. Set `BROWSER_ENGINE=firefox` or `webkit` for the other installed Playwright engines.
 
 `pnpm test:performance` runs ten minutes with 20 reads and five writes per second, 50 hint streams, 20 projects of 300 tasks, ten members per project, and three comments per task, plus a 500-task project. A real headless Chrome observer records remote card rendering; cold-load throttling uses 10 Mbps and 100 ms added latency. Run this separately from other builds/browser suites on hosts with limited memory. Reports include actual versions, measurements, and pass/fail targets. Short `PERF_DURATION_SECONDS` runs only check the harness.
 

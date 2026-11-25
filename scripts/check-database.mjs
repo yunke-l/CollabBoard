@@ -21,7 +21,7 @@ try {
   await admin.connect();
   await admin.query(`CREATE DATABASE "${name}"`);
   created = true;
-  const child = spawn('pnpm', ['test'], {
+  const child = spawn('pnpm', ['test', ...process.argv.slice(2)], {
     env: { ...process.env, TEST_DATABASE_URL: url.href },
     stdio: 'inherit',
   });

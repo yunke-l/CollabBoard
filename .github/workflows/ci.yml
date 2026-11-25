@@ -12,13 +12,8 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        engine: [chromium, firefox, webkit]
     env:
       TEST_DATABASE_URL: postgresql://collabboard:collabboard_local@localhost:5432/collabboard_test
-      BROWSER_ENGINE: ${{ matrix.engine }}
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Start PostgreSQL
@@ -32,10 +27,56 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+      - name: Package verified applications
+        run: tar -czf "$RUNNER_TEMP/apps.tar.gz" apps/api/dist apps/web/dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-apps
+          path: ${{ runner.temp }}/apps.tar.gz
+          retention-days: 1
+      - name: PostgreSQL diagnostics
+        if: failure()
+        run: docker compose -f infra/local/compose.yaml logs --no-color postgres
+      - name: Stop PostgreSQL
+        if: always()
+        run: docker compose -f infra/local/compose.yaml down
+
+  browser:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [chromium, firefox, webkit]
+    env:
+      BROWSER_ENGINE: ${{ matrix.engine }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: pnpm/action-setup@v6.1.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-apps
+          path: ${{ runner.temp }}
+      - run: tar -xzf "$RUNNER_TEMP/apps.tar.gz"
+      - run: docker compose -f infra/local/compose.yaml up -d --wait postgres
       - name: Install browser for acceptance checks
         run: pnpm exec playwright install --with-deps ${{ matrix.engine }}
-      - name: Verify two-account browser workflows
+      - name: Verify browser scenarios
         run: pnpm test:browser
+      - name: Save browser diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-diagnostics-${{ matrix.engine }}
+          path: .local/browser-check/${{ matrix.engine }}/diagnostics.json
+          include-hidden-files: true
+          if-no-files-found: ignore
       - name: PostgreSQL diagnostics
         if: failure()
         run: docker compose -f infra/local/compose.yaml logs --no-color postgres

@@ -1,20 +1,32 @@
-/// <reference lib="dom" />
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { AuthSession } from '@collabboard/contracts';
-import { localIdentities } from '../../apps/api/src/adapters/identity/local-identities';
 import {
   api,
   authorizedFetch,
   getAccessToken,
   setClientSession,
-} from '../../apps/web/src/shared/api/client';
+} from './client';
 
 const alex: AuthSession = {
-  user: localIdentities[0]!,
+  user: {
+    id: 'alex',
+    emailVerified: true,
+    displayName: 'Alex',
+    email: 'alex@example.test',
+  },
   accessToken: 'alex-original',
   expiresAt: new Date(Date.now() + 3600000).toISOString(),
 };
-const jamie = { ...alex, user: localIdentities[1]!, accessToken: 'jamie' };
+const jamie = {
+  ...alex,
+  user: {
+    id: 'jamie',
+    emailVerified: true,
+    displayName: 'Jamie',
+    email: 'jamie@example.test',
+  },
+  accessToken: 'jamie',
+};
 const fetchMock = vi.fn<typeof fetch>();
 const write = () =>
   api('/tasks/task-id', {
@@ -25,7 +37,6 @@ const unauthorized = () =>
   Response.json({ message: 'Unauthorized' }, { status: 401 });
 
 beforeEach(() => {
-  vi.stubGlobal('window', new EventTarget());
   vi.stubGlobal('fetch', fetchMock);
   setClientSession(alex);
 });

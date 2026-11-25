@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readEnvironment } from '../../apps/api/src/config/environment';
+import { readEnvironment } from './environment';
 
 describe('development identity boundary', () => {
   it('rejects production, unknown identity providers, and public interfaces', () => {
