@@ -65,7 +65,62 @@ async function runScenario(browser, result) {
       );
     const page = await context.newPage();
     page.setDefaultTimeout(12000);
-    page.on('pageerror', (error) => errors.push(error.message));
+    const role = ['owner', 'editor', 'mobile'][pages.length];
+    page.on('pageerror', (error) => {
+      const source = error.message.match(
+        /\/api\/(projects|events|auth|tasks|notifications|demo)(?=[/?\s]|$)/,
+      )?.[1];
+      console.info(
+        'Browser error',
+        role,
+        source ?? 'other',
+        /due to access control checks/.test(error.message)
+          ? 'access-control'
+          : 'other',
+      );
+      errors.push(error.message);
+    });
+    page.on('requestfailed', (request) => {
+      const resource = new URL(request.url()).pathname.split('/')[2];
+      if (
+        [
+          'projects',
+          'events',
+          'auth',
+          'tasks',
+          'notifications',
+          'demo',
+        ].includes(resource)
+      )
+        console.info(
+          'Request failed',
+          role,
+          resource,
+          request.failure()?.errorText?.includes('cancel')
+            ? 'cancelled'
+            : 'other',
+        );
+    });
+    await page.exposeFunction('reportRuntimeEvent', (kind) => {
+      if (['exception', 'rejection', 'connected', 'hint'].includes(kind))
+        console.info('Page event', role, kind);
+    });
+    await page.addInitScript(() => {
+      window.addEventListener('error', () =>
+        window.reportRuntimeEvent('exception'),
+      );
+      window.addEventListener('unhandledrejection', () =>
+        window.reportRuntimeEvent('rejection'),
+      );
+      const decode = TextDecoder.prototype.decode;
+      TextDecoder.prototype.decode = function (...args) {
+        const text = decode.apply(this, args);
+        if (text.includes('event: connected'))
+          window.reportRuntimeEvent('connected');
+        if (text.includes('event: hint')) window.reportRuntimeEvent('hint');
+        return text;
+      };
+    });
     pages.push(page);
     return page;
   }
