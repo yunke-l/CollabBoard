@@ -79,29 +79,6 @@ async function runScenario(browser, result) {
         void globalThis.reportBrowserError(String(event.reason));
       });
     });
-    if (name === 'attachments') {
-      const role = ['owner', 'editor', 'mobile'][pages.length];
-      page.on('console', (message) => {
-        if (/^hint-(reader|refresh) /.test(message.text()))
-          console.info(role, message.text());
-      });
-      for (const event of ['request', 'requestfailed', 'response']) {
-        page.on(event, (obj) => {
-          const path = new URL(obj.url()).pathname;
-          if (
-            path.endsWith('/board') ||
-            path.endsWith('/events') ||
-            path.endsWith('/attachments')
-          )
-            console.info(
-              role,
-              event,
-              path.split('/').at(-1),
-              obj.status?.() ?? '',
-            );
-        });
-      }
-    }
     pages.push(page);
     return page;
   }
