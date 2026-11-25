@@ -36,14 +36,24 @@ export class EventsController {
     const user = this.identity.authenticate(request);
     validate(z.strictObject({}), query);
     let unsubscribe: () => void;
+    let flushTimer: ReturnType<typeof setTimeout> | undefined;
     try {
       unsubscribe = this.transport.subscribe(user.id, (hint) => {
         if (response.writableLength > 65536) {
           response.end();
           return;
         }
-        if (!response.destroyed)
-          response.write(`event: hint\ndata: ${JSON.stringify(hint)}\n\n`);
+        if (response.destroyed || response.writableEnded) return;
+        response.write(`event: hint\ndata: ${JSON.stringify(hint)}\n\n`);
+        // WebKit can hold the tail of a fetch stream until the next network
+        // write. Flush the last hint in a burst without waiting for a heartbeat.
+        if (flushTimer) flushTimer.refresh();
+        else
+          flushTimer = setTimeout(() => {
+            flushTimer = undefined;
+            if (!response.destroyed && !response.writableEnded)
+              response.write(': flush\n\n');
+          }, 50);
       });
     } catch {
       throw new HttpException(
@@ -65,6 +75,7 @@ export class EventsController {
       response.write(': heartbeat\n\n');
     }, 15000);
     const close = () => {
+      clearTimeout(flushTimer);
       clearInterval(heartbeat);
       unsubscribe();
     };

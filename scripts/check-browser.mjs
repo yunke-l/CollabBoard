@@ -65,7 +65,20 @@ async function runScenario(browser, result) {
       );
     const page = await context.newPage();
     page.setDefaultTimeout(12000);
-    page.on('pageerror', (error) => errors.push(error.message));
+    // WebKit also emits inspector page errors for handled network failures.
+    // Observe JS exceptions and unhandled rejections in each document directly.
+    await page.exposeFunction('reportBrowserError', (message) =>
+      errors.push(message),
+    );
+    await page.addInitScript(() => {
+      globalThis.addEventListener('error', (event) => {
+        if (event instanceof ErrorEvent)
+          void globalThis.reportBrowserError(event.message);
+      });
+      globalThis.addEventListener('unhandledrejection', (event) => {
+        void globalThis.reportBrowserError(String(event.reason));
+      });
+    });
     pages.push(page);
     return page;
   }
