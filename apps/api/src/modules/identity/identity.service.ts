@@ -5,6 +5,7 @@ import type { User } from '@collabboard/contracts';
 import { localIdentities } from '../../adapters/identity/local-identities.js';
 import { LocalAccounts } from '../../adapters/identity/local-accounts.js';
 import { Database } from '../../platform/database/database.js';
+import { readEnvironment } from '../../config/environment.js';
 
 export interface IdentityProvider {
   authenticate(request: Request): User;
@@ -77,7 +78,7 @@ export class LocalIdentityProvider implements IdentityProvider {
       sameSite: 'strict',
       path: '/api/auth',
       maxAge: 7 * 86400000,
-      secure: false,
+      secure: readEnvironment().hostedDemo,
     });
   }
   private session(

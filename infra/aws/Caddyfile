@@ -1,0 +1,19 @@
+{
+	admin off
+}
+
+{$DEMO_DOMAIN} {
+	@outside not remote_ip {$DEMO_IPV4}/32
+	route {
+		respond @outside 403
+		@api path /api /api/*
+		handle @api {
+			reverse_proxy 127.0.0.1:3001
+		}
+		handle {
+			root * /srv/board
+			try_files {path} /index.html
+			file_server
+		}
+	}
+}

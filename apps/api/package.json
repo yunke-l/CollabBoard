@@ -2,10 +2,14 @@
   "name": "@collabboard/api",
   "version": "0.1.0",
   "private": true,
+  "files": [
+    "dist",
+    "migrations"
+  ],
   "type": "module",
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts",
-    "build": "esbuild src/main.ts --bundle --platform=node --target=node24 --format=esm --packages=external --alias:@collabboard/contracts=../../packages/contracts/src/index.ts --outfile=dist/main.js --sourcemap",
+    "build": "esbuild src/main.ts src/platform/database/migrate.ts src/platform/database/seed.ts --bundle --platform=node --target=node24 --format=esm --packages=external --alias:@collabboard/contracts=../../packages/contracts/src/index.ts --outbase=src --outdir=dist --sourcemap",
     "start": "node --env-file-if-exists=../../.env dist/main.js",
     "typecheck": "tsc --noEmit",
     "db:migrate": "tsx --env-file-if-exists=../../.env src/platform/database/migrate.ts",

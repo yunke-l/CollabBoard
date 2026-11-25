@@ -1,0 +1,76 @@
+name: collabboard-demo
+services:
+  gateway:
+    build:
+      context: ../..
+      dockerfile: infra/aws/Dockerfile
+      target: gateway
+    restart: unless-stopped
+    environment:
+      DEMO_DOMAIN: ${DEMO_DOMAIN:?Set the public DNS hostname}
+      DEMO_IPV4: ${DEMO_IPV4:?Set your browser network public IPv4 address}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - certificates:/data
+      - caddy_config:/config
+
+  postgres:
+    image: collabboard-postgres:17.12-patched
+    build: ../postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: collabboard
+      POSTGRES_DB: collabboard
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set the generated database password}
+    volumes:
+      - database:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'collabboard', '-d', 'collabboard']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/aws/Dockerfile
+      target: api
+    restart: unless-stopped
+    init: true
+    # Only the gateway can reach the API over their shared loopback interface.
+    network_mode: service:gateway
+    depends_on:
+      gateway:
+        condition: service_started
+        restart: true
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      IDENTITY_PROVIDER: private-demo
+      API_HOST: 127.0.0.1
+      WEB_ORIGIN: https://${DEMO_DOMAIN:?Set the public DNS hostname}
+      DEMO_IPV4: ${DEMO_IPV4:?Set your browser network public IPv4 address}
+      LOCAL_STATE_DIR: /state
+      DATABASE_URL: postgresql://collabboard:${POSTGRES_PASSWORD:?Set the generated database password}@postgres:5432/collabboard
+    volumes:
+      - private_state:/state
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3001/api/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  database:
+  private_state:
+  certificates:
+  caddy_config:

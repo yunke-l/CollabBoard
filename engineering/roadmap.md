@@ -1,6 +1,6 @@
 # Implementation roadmap
 
-Current scope: finish and validate all local features. AWS connections, provisioning, deployment, and cloud acceptance are explicitly deferred at the user's request on November 19, 2026. Local performance and recovery results must not be presented as cloud measurements.
+The original roadmap below tracks the local release and a future managed-service showcase. The private two-account EC2 demo on the aws-hosting branch follows the [single-instance deployment guide](../infra/aws/README.md). Local performance and recovery results must not be presented as cloud measurements.
 
 ## Initial foundation
 

@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
+import { readEnvironment } from './config/environment.js';
 import { Database } from './platform/database/database.js';
 import {
   LocalIdentityProvider,
@@ -126,6 +127,7 @@ class FoundationController {
   ) {
     this.identity.signOut(request);
     response.clearCookie(refreshCookie, {
+      secure: readEnvironment().hostedDemo,
       path: '/api/auth',
       httpOnly: true,
       sameSite: 'strict',

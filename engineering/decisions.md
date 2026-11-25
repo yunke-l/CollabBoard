@@ -46,7 +46,7 @@ The browser keeps edit drafts separate from task query snapshots. A conflict ref
 
 ## Local adapters and cloud boundaries
 
-The local identity adapter supports email registration, development verification, sign-in, recovery, and synthetic account shortcuts. Salted scrypt password hashes, one-time code hashes, refresh-session hashes, and identity attempt counters live in a private SQLite store outside business PostgreSQL. Codes appear in a development mailbox and no email is sent. One-hour opaque bearer tokens remain in memory; a seven-day absolute HttpOnly, SameSite=Strict refresh cookie restores a session after reload or API restart. Logout and password reset revoke the corresponding stored sessions; bearer authentication checks their revocation. Production and public-interface startup remain rejected.
+The local identity adapter supports email registration, development verification, sign-in, recovery, and synthetic account shortcuts. Salted scrypt password hashes, one-time code hashes, refresh-session hashes, and identity attempt counters live in a private SQLite store outside business PostgreSQL. Codes appear in a development mailbox and no email is sent. One-hour opaque bearer tokens remain in memory; a seven-day absolute HttpOnly, SameSite=Strict refresh cookie restores a session after reload or API restart. Logout and password reset revoke the corresponding stored sessions; bearer authentication checks their revocation. The API binds to loopback. The private EC2 configuration accepts an HTTPS origin and sets Secure on the refresh cookie.
 
 The fifth migration adds per-recipient deliveries. PostgreSQL locks and expiring tokenized leases coordinate dispatchers; recipients are initialized after business commit and membership is checked again immediately before each publication. Claims and successful acknowledgements are batched to avoid a durable disk flush for every recipient. A process failure before acknowledgement can redeliver an identifier-only hint, which is safe because clients fetch authoritative data. Individual failures preserve successful recipients, use exponential backoff, and become retained failed deliveries after 24 hours. Warnings identify a pending age over 60 seconds or failed deliveries needing manual retry.
 
@@ -58,7 +58,7 @@ Migration 0008 retires the trial lifecycle and converts existing active and arch
 
 Local private state is selected by absolute `LOCAL_STATE_DIR`, or `.local` relative to the API working directory. Identity/files use private filesystem permissions and stay outside the static web root. Backups must include both PostgreSQL and this state directory with the API stopped for a consistent local snapshot. The automated performance drill restores a frozen logical database into a distinct disposable database and checks exact table digests. It does not claim continuous backup, point-in-time recovery, or cloud RPO/RTO.
 
-AWS integration, Terraform, deployment roles, and paid resources are deferred until local acceptance is complete. The project is intended for a short cloud validation and recording window, followed by resource cleanup.
+The [private EC2 demo](../infra/aws/README.md) runs these adapters behind a source-IP-restricted HTTPS gateway. The managed-service showcase and its Terraform deployment remain deferred. The project is intended for a short cloud validation and recording window, followed by resource cleanup.
 
 ## Reference material
 

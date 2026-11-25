@@ -2,7 +2,7 @@
 
 A task collaboration application for small teams, built with React, TypeScript, NestJS, and PostgreSQL.
 
-This repository implements the local feature set: email accounts, projects, invitations, roles, tasks, comments, activity, assignment notifications, live update hints, private attachments, and an interactive sample board. Local adapters refuse production startup. AWS connections, deployment, and cloud acceptance are deferred at the user's request.
+This repository implements email accounts, projects, invitations, roles, tasks, comments, activity, assignment notifications, live update hints, private attachments, and an interactive sample board. The `aws-hosting` branch also supports a private, single-instance EC2 demo for one operator using Alex and Jamie in independent browser sessions. See the [EC2 deployment guide](infra/aws/README.md).
 
 All project-provided content is English. User-authored text supports Unicode.
 
