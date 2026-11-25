@@ -84,7 +84,10 @@ export function BoardPage({ sample = false }: { sample?: boolean }) {
     sampleTasks,
     setSampleTasks,
   } = useProjectControls();
-  const [moveError, setMoveError] = useState('');
+  const [moveError, setMoveError] = useState<{
+    taskId: string;
+    message: string;
+  } | null>(null);
   const moveLock = useRef(false);
   const moveAttempt = useRef<{ content: string; requestId: string } | null>(
     null,
@@ -146,7 +149,7 @@ export function BoardPage({ sample = false }: { sample?: boolean }) {
       return;
     moveLock.current = true;
     setMoving(true);
-    setMoveError('');
+    setMoveError(null);
     const values = {
       expectedVersion: task.version,
       expectedBoardRevision: snapshot.project.boardRevision,
@@ -167,11 +170,13 @@ export function BoardPage({ sample = false }: { sample?: boolean }) {
       moveAttempt.current = null;
     } catch (failure) {
       client.setQueryData(key, snapshot);
-      setMoveError(
-        failure instanceof Error
-          ? failure.message
-          : 'The move could not be saved. The board has been refreshed.',
-      );
+      setMoveError({
+        taskId,
+        message:
+          failure instanceof Error
+            ? failure.message
+            : 'The move could not be saved. The board has been refreshed.',
+      });
     } finally {
       await Promise.all([
         client.invalidateQueries({ queryKey: ['board', id] }),
@@ -263,9 +268,9 @@ export function BoardPage({ sample = false }: { sample?: boolean }) {
           <span role="status">Saving task position…</span>
         </Notice>
       )}
-      {moveError && (
+      {moveError && !taskId && (
         <p role="alert" className="error-copy">
-          {moveError}
+          {moveError.message}
         </p>
       )}
       <div className="board-toolbar">
@@ -376,6 +381,10 @@ export function BoardPage({ sample = false }: { sample?: boolean }) {
           membersFailed={memberQuery.isError}
           onClose={closeTask}
           moving={moving}
+          boardTasks={tasks}
+          canReorder={!hasFilters}
+          onMove={move}
+          moveError={moveError?.taskId === taskId ? moveError.message : ''}
         />
       )}
       {taskId && sample && (

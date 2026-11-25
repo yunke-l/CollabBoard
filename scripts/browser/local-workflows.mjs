@@ -424,10 +424,16 @@ export async function checkLocalResources({
     'UPDATE projects SET board_revision = board_revision + 1 WHERE id = $1',
     [projectId],
   );
+  await editor.reload();
+  await editor
+    .getByRole('dialog')
+    .getByRole('heading', { name: 'File acceptance', exact: true })
+    .waitFor();
   await editor
     .getByRole('button', { name: 'Close dialog', exact: true })
     .click();
-  await editor.reload();
+  await editor.waitForURL('**/board');
+  await editor.getByRole('dialog').waitFor({ state: 'hidden' });
   await editor.getByText('500 of 500 tasks', { exact: true }).waitFor();
   assert.equal(await editor.locator('.task-card').count(), 500);
   await editor
@@ -436,10 +442,19 @@ export async function checkLocalResources({
   await editor
     .getByRole('heading', { name: 'Capacity task 499', exact: true })
     .waitFor();
+  await editor.getByText('1 of 500 tasks', { exact: true }).waitFor();
+  assert.deepEqual(await editor.locator('.task-card h3').allTextContents(), [
+    'Capacity task 499',
+  ]);
   await editor.screenshot({
     path: resolve(output, 'capacity-500-filtered.png'),
     fullPage: true,
   });
+  await editor
+    .getByRole('button', { name: 'Clear filters', exact: true })
+    .click();
+  await editor.getByText('500 of 500 tasks', { exact: true }).waitFor();
+  assert.equal(await editor.locator('.task-card').count(), 500);
   assert.deepEqual(errors, [], 'Resource workflows reported browser errors.');
   console.info(
     'Browser workflow: refresh restores a deep session and a 500-task board remains searchable.',
@@ -506,16 +521,22 @@ export async function checkIdentity({ browser, base, output, pages, errors }) {
     onboardingMs <= 120000,
     'A new account must create its first project and task within two minutes.',
   );
-  await page.goto(`${base}/projects`);
+  const firstProject = page.getByRole('heading', {
+    name: 'My first project',
+    exact: true,
+  });
+  await page
+    .getByRole('navigation', { name: 'Application navigation' })
+    .getByRole('link', { name: 'Projects', exact: true })
+    .click();
+  await firstProject.waitFor();
   const cookie = (await context.cookies()).find(
     (cookie) => cookie.name === 'collabboard.refresh',
   );
   assert.ok(cookie?.httpOnly);
   assert.equal(cookie.sameSite, 'Strict');
   await page.reload();
-  await page
-    .getByRole('heading', { name: 'Your projects', exact: true })
-    .waitFor();
+  await firstProject.waitFor();
   const local = await page.evaluate(() => ({ ...localStorage }));
   assert.ok(!JSON.stringify(local).includes(oldSession.accessToken));
   await page.goto(`${base}/recover-password`);
@@ -557,6 +578,8 @@ export async function checkIdentity({ browser, base, output, pages, errors }) {
     .getByRole('button', { name: 'Sign in with email', exact: true })
     .click();
   await page.waitForURL('**/projects');
+  await page.getByText('Connected', { exact: true }).waitFor();
+  await firstProject.waitFor();
   await context.setOffline(true);
   await page.getByRole('button', { name: 'Sign out', exact: true }).waitFor();
   await page.waitForFunction(

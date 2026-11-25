@@ -1,5 +1,6 @@
 import 'reflect-metadata';
-import { afterEach, describe, expect, it } from 'vitest';
+import { randomInt } from 'node:crypto';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LocalAccounts } from '../../apps/api/src/adapters/identity/local-accounts';
 import {
   signUpSchema,
@@ -7,10 +8,17 @@ import {
   resetPasswordSchema,
 } from '@collabboard/contracts';
 
+vi.mock('node:crypto', async (importOriginal) => {
+  const crypto = await importOriginal<typeof import('node:crypto')>();
+  return { ...crypto, randomInt: vi.fn(crypto.randomInt) };
+});
+
 let identity: LocalAccounts | undefined;
 afterEach(() => {
   identity?.onModuleDestroy();
   identity = undefined;
+  vi.mocked(randomInt).mockReset();
+  vi.useRealTimers();
 });
 const password = 'A local test password 123!';
 describe('local development identity lifecycle', () => {
@@ -83,7 +91,15 @@ describe('local development identity lifecycle', () => {
     const user = identity.signIn(created.email, password);
     const first = identity.createRefresh(user);
     const second = identity.createRefresh(user);
+    // Distinct codes keep the replacement assertion independent of random collisions.
+    vi.mocked(randomInt)
+      .mockImplementationOnce(() => 123456)
+      .mockImplementationOnce(() => 654321);
+    const previous = identity.recover(created.email);
     const recovery = identity.recover(created.email);
+    expect(() =>
+      identity!.reset(created.email, previous.developmentCode, password),
+    ).toThrow('invalid or expired');
     identity.reset(
       created.email,
       recovery.developmentCode,
@@ -99,7 +115,33 @@ describe('local development identity lifecycle', () => {
       identity!.reset(created.email, recovery.developmentCode, password),
     ).toThrow();
   });
+  it('accepts a recovery code just before its ten-minute expiry and rejects one at expiry', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const start = Date.UTC(2026, 0, 1);
+    vi.setSystemTime(start);
+    identity = new LocalAccounts(':memory:');
+    const { email } = identity.signUp(
+      'taylor@example.test',
+      'Taylor',
+      password,
+    );
+    const first = identity.recover(email);
+    vi.setSystemTime(start + 600_000 - 1);
+    expect(identity.reset(email, first.developmentCode, password)).toEqual({
+      reset: true,
+    });
+
+    const issuedAt = Date.now();
+    const second = identity.recover(email);
+    vi.setSystemTime(issuedAt + 600_000);
+    expect(() =>
+      identity!.reset(email, second.developmentCode, password),
+    ).toThrow('invalid or expired');
+  });
   it('limits failed identity attempts and does not expose whether recovery found an account', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const start = Date.UTC(2026, 0, 1);
+    vi.setSystemTime(start);
     identity = new LocalAccounts(':memory:');
     for (let index = 0; index < 10; index++)
       expect(() =>
@@ -107,6 +149,10 @@ describe('local development identity lifecycle', () => {
       ).toThrow();
     expect(() => identity!.signIn('missing@example.test', password)).toThrow(
       'Too many identity attempts',
+    );
+    vi.setSystemTime(start + 60_000);
+    expect(() => identity!.signIn('missing@example.test', password)).toThrow(
+      'email or password',
     );
     expect(identity.recover('missing@example.test')).toMatchObject({
       sent: true,

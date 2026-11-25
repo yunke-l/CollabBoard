@@ -3,10 +3,22 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, readdir, rm, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import pg from 'pg';
-import type { CreateProject, CreateTask } from '@collabboard/contracts';
+import type {
+  CreateProject,
+  CreateTask,
+  InitializeAttachment,
+} from '@collabboard/contracts';
 import { ProjectsService } from '../../apps/api/src/modules/projects/projects.service';
 import { NotificationsService } from '../../apps/api/src/modules/notifications/notifications.service';
 import { DiscussionService } from '../../apps/api/src/modules/discussion/discussion.service';
@@ -16,7 +28,7 @@ import { FilesService } from '../../apps/api/src/modules/files/files.service';
 import { LocalPrivateStorage } from '../../apps/api/src/platform/storage/private-storage';
 import { consumeRate } from '../../apps/api/src/platform/http/rate-limit';
 import { MaintenanceService } from '../../apps/api/src/platform/jobs/maintenance.service';
-import type { Database } from '../../apps/api/src/platform/database/database';
+import { Database } from '../../apps/api/src/platform/database/database';
 import { localIdentities } from '../../apps/api/src/adapters/identity/local-identities';
 
 type Sql = {
@@ -54,12 +66,24 @@ const createTask = (): CreateTask => ({
 });
 
 beforeAll(async () => {
-  sql = process.env.TEST_DATABASE_URL
-    ? (new pg.Client({
-        connectionString: process.env.TEST_DATABASE_URL,
-      }) as unknown as Sql)
-    : (new PGlite() as unknown as Sql);
-  if (sql instanceof pg.Client) await sql.connect();
+  if (process.env.TEST_DATABASE_URL) {
+    vi.stubEnv('DATABASE_URL', process.env.TEST_DATABASE_URL);
+    database = new Database();
+    // Fixture SQL uses a single connection for explicit BEGIN/COMMIT pairs.
+    const client = new pg.Client({
+      connectionString: process.env.TEST_DATABASE_URL,
+    });
+    sql = client;
+    await client.connect();
+  } else {
+    const embedded = new PGlite();
+    sql = embedded as unknown as Sql;
+    database = {
+      pool: embedded,
+      transaction: (work: (client: Sql) => Promise<unknown>) =>
+        embedded.transaction(work),
+    } as unknown as Database;
+  }
   const migrations = new URL('../../apps/api/migrations/', import.meta.url);
   for (const name of (await readdir(migrations))
     .filter((name) => name.endsWith('.sql'))
@@ -68,20 +92,6 @@ beforeAll(async () => {
     if (sql.exec) await sql.exec(migration);
     else await sql.query(migration);
   }
-  database = {
-    pool: sql,
-    transaction: async (work: (client: Sql) => Promise<unknown>) => {
-      await sql.query('BEGIN');
-      try {
-        const result = await work(sql);
-        await sql.query('COMMIT');
-        return result;
-      } catch (error) {
-        await sql.query('ROLLBACK');
-        throw error;
-      }
-    },
-  } as unknown as Database;
   service = new ProjectsService(database);
   notifications = new NotificationsService(database);
   discussion = new DiscussionService(database);
@@ -99,12 +109,44 @@ beforeEach(async () => {
     );
 });
 afterAll(async () => {
+  if (database instanceof Database) await database.beforeApplicationShutdown();
+  vi.unstubAllEnvs();
   await sql?.end?.();
   await sql?.close?.();
   if (storageRoot) await rm(storageRoot, { recursive: true, force: true });
 });
 
 describe('transactional foundation', () => {
+  it.skipIf(!process.env.TEST_DATABASE_URL)(
+    'rolls back a successful statement on application error and reuses the released connection',
+    async () => {
+      let failedConnection: number | undefined;
+      const failure = new Error('Transaction cancelled');
+      await expect(
+        database.transaction(async (client) => {
+          const result = await client.query<{ pid: number }>(
+            'UPDATE users SET display_name = $1 WHERE id = $2 RETURNING pg_backend_pid() AS pid',
+            ['Uncommitted name', owner],
+          );
+          failedConnection = result.rows[0]!.pid;
+          throw failure;
+        }),
+      ).rejects.toBe(failure);
+      expect(database.pool.idleCount).toBe(database.pool.totalCount);
+      const result = await database.transaction((client) =>
+        client.query(
+          'SELECT display_name, pg_backend_pid() AS pid FROM users WHERE id = $1',
+          [owner],
+        ),
+      );
+      expect(result.rows).toEqual([
+        {
+          display_name: localIdentities[0]!.displayName,
+          pid: failedConnection,
+        },
+      ]);
+    },
+  );
   it('creates a project, exactly one Owner, activity, and an outbox event together', async () => {
     const project = await service.create(owner, createProject());
     expect(project.role).toBe('Owner');
@@ -2315,29 +2357,7 @@ async function withConcurrentService(
     concurrentDatabase: Database,
   ) => Promise<void>,
 ) {
-  const pool = new pg.Pool({
-    connectionString: process.env.TEST_DATABASE_URL,
-    max: 4,
-  });
-  const database = {
-    pool,
-    transaction: async (
-      operation: (client: pg.PoolClient) => Promise<unknown>,
-    ) => {
-      const client = await pool.connect();
-      try {
-        await client.query('BEGIN');
-        const result = await operation(client);
-        await client.query('COMMIT');
-        return result;
-      } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-      } finally {
-        client.release();
-      }
-    },
-  } as unknown as Database;
+  const database = new Database();
   try {
     await work(
       new ProjectsService(database),
@@ -2347,7 +2367,7 @@ async function withConcurrentService(
       database,
     );
   } finally {
-    await pool.end();
+    await database.beforeApplicationShutdown();
   }
 }
 
@@ -2600,30 +2620,33 @@ describe('recipient-aware event delivery', () => {
 
   it('preserves partial success and retries only failed recipients', async () => {
     await joinedProject();
-    const published: string[] = [];
+    const published: { recipientId: string; eventId: string }[] = [];
     let fail = true;
     const dispatcher = new DispatcherService(database, {
-      async publish(userId) {
-        if (fail && userId === other) throw new Error('Transport unavailable');
-        published.push(userId);
+      async publish(recipientId, hint) {
+        if (fail && recipientId === other)
+          throw new Error('Transport unavailable');
+        published.push({ recipientId, eventId: hint.eventId });
       },
     });
     await dispatcher.tick();
-    const delivered = published.length;
-    expect(delivered).toBeGreaterThan(0);
-    expect(
-      (
-        await sql.query(
-          "SELECT 1 FROM event_deliveries WHERE state = 'pending'",
-        )
-      ).rows.length,
-    ).toBeGreaterThan(0);
+    expect(new Set(published.map((item) => item.recipientId))).toEqual(
+      new Set([owner]),
+    );
+    const pending = await sql.query(
+      'SELECT recipient_id AS "recipientId", event_id AS "eventId" FROM event_deliveries WHERE state = \'pending\'',
+    );
+    expect(new Set(pending.rows.map((row) => row.recipientId))).toEqual(
+      new Set([other]),
+    );
+    published.length = 0;
     fail = false;
     await sql.query(
       "UPDATE event_deliveries SET next_attempt_at = now() - interval '1 second'",
     );
     await dispatcher.tick();
-    expect(published.slice(delivered).every((id) => id === other)).toBe(true);
+    expect(published).toHaveLength(pending.rows.length);
+    expect(published).toEqual(expect.arrayContaining(pending.rows));
     expect(
       (
         await sql.query(
@@ -2635,14 +2658,16 @@ describe('recipient-aware event delivery', () => {
 
   it('rechecks membership after a failed delivery and preserves failed events for manual retry', async () => {
     const { project } = await joinedProject();
-    const published: string[] = [];
+    const attempts: string[] = [];
     const dispatcher = new DispatcherService(database, {
       async publish(userId) {
+        attempts.push(userId);
         if (userId === other) throw new Error('Unavailable');
-        published.push(userId);
       },
     });
     await dispatcher.tick();
+    expect(attempts).toContain(other);
+    attempts.length = 0;
     await service.changeMember(owner, project.id, other, {
       requestId: randomUUID(),
     });
@@ -2650,7 +2675,16 @@ describe('recipient-aware event delivery', () => {
       "UPDATE event_deliveries SET next_attempt_at = now() - interval '1 second'",
     );
     await dispatcher.tick();
-    expect(published).not.toContain(other);
+    expect(attempts).toContain(owner);
+    expect(attempts).not.toContain(other);
+    expect(
+      (
+        await sql.query(
+          "SELECT 1 FROM event_deliveries WHERE recipient_id = $1 AND state = 'pending'",
+          [other],
+        )
+      ).rows,
+    ).toEqual([]);
     const failing = new DispatcherService(database, {
       async publish() {
         throw new Error('Unavailable');
@@ -2703,7 +2737,7 @@ describe('recipient-aware event delivery', () => {
 const fileInput = (
   originalName = 'notes.txt',
   sizeBytes = 5,
-  mediaType: 'text/plain' | 'image/png' = 'text/plain',
+  mediaType: InitializeAttachment['mediaType'] = 'text/plain',
 ) => ({ originalName, sizeBytes, mediaType, requestId: randomUUID() });
 async function readyFile(userId: string, taskId: string, name = 'notes.txt') {
   const initialized = await files.initialize(userId, taskId, fileInput(name));
@@ -2889,6 +2923,52 @@ describe('private attachment lifecycle', () => {
       requestId: randomUUID(),
     });
   });
+  // Two 2×2 images encoded with Pillow. Both the full and truncated upload
+  // declare their actual byte length so completion tests the file format.
+  it.each([
+    {
+      name: 'pixel.jpg',
+      mediaType: 'image/jpeg',
+      base64:
+        '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAACAAIDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAABQf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCOALiMf//Z',
+    },
+    {
+      name: 'pixel.webp',
+      mediaType: 'image/webp',
+      base64:
+        'UklGRjoAAABXRUJQVlA4IC4AAACQAQCdASoCAAIAAUAmJaACdLoAA5gA/vtV4/+lwf/S4P/pcH/pcH8bss4bpAAA',
+    },
+  ] as const)(
+    'publishes a complete $mediaType image and rejects a truncated upload',
+    async ({ name, mediaType, base64 }) => {
+      const project = await service.create(owner, createProject());
+      const { task } = await service.createTask(
+        owner,
+        project.id,
+        createTask(),
+      );
+      const original = Buffer.from(base64, 'base64');
+      const submit = async (body: Buffer) => {
+        const { attachment, upload } = await files.initialize(
+          owner,
+          task.id,
+          fileInput(name, body.length, mediaType),
+        );
+        await files.upload(owner, attachment.id, upload.token, body);
+        return files.complete(owner, attachment.id, {
+          requestId: randomUUID(),
+        });
+      };
+      const ready = await submit(original);
+      expect(ready.state).toBe('ready');
+      await expect(submit(original.subarray(0, -2))).rejects.toMatchObject({
+        response: { code: 'INVALID_FILE' },
+      });
+      expect(
+        (await files.list(owner, task.id)).items.map((item) => item.id),
+      ).toEqual([ready.attachmentId]);
+    },
+  );
   it('counts unexpired reservations against task slots and project bytes and releases expiry exactly once', async () => {
     const project = await service.create(owner, createProject());
     const { task } = await service.createTask(owner, project.id, createTask());

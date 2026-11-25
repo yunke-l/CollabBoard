@@ -1,7 +1,7 @@
 {
-  "date": "2026-11-23T23:05:35.828Z",
+  "date": "2026-11-24T23:10:28.850Z",
   "engine": "chromium",
-  "version": "158.0.8127.36",
+  "version": "151.0.7922.34",
   "scope": "Local PostgreSQL and local identity/file/SSE adapters; no AWS",
   "desktopViewport": {
     "width": 1440,
@@ -13,7 +13,7 @@
   },
   "passed": true,
   "measurements": {
-    "onboardingMs": 330
+    "onboardingMs": 190
   },
   "workflows": [
     "invitations and quotas",

@@ -10,11 +10,13 @@ import {
   priorities,
   projectCapabilities,
   statusLabels,
+  taskStatuses,
   updateTaskSchema,
   type MemberSnapshot,
   type Project,
   type Task,
   type TaskResult,
+  type TaskStatus,
 } from '@collabboard/contracts';
 import { ApiError, api } from '../../shared/api/client';
 import {
@@ -48,6 +50,10 @@ export function TaskDetail({
   membersFailed,
   onClose,
   moving,
+  boardTasks,
+  canReorder,
+  onMove,
+  moveError,
 }: {
   project: Project;
   taskId: string;
@@ -55,6 +61,14 @@ export function TaskDetail({
   membersFailed: boolean;
   onClose: () => void;
   moving: boolean;
+  boardTasks: Task[];
+  canReorder: boolean;
+  onMove: (
+    taskId: string,
+    status: TaskStatus,
+    beforeTaskId: string | null,
+  ) => void;
+  moveError: string;
 }) {
   const { user } = useSession();
   const online = useOnline();
@@ -88,12 +102,18 @@ export function TaskDetail({
   const [filePending, setFilePending] = useState(false);
   const resourcePending = commentPending || filePending;
   const attempt = useRef<{ content: string; requestId: string } | null>(null);
-  const canEdit = projectCapabilities(
+  const { canEditTask: canEdit, canMoveTask } = projectCapabilities(
     project.role,
     project.status,
     !!query.data?.archivedAt,
     online,
-  ).canEditTask;
+  );
+  const moveSummary = useRef<HTMLElement>(null);
+  function move(status: TaskStatus, beforeTaskId: string | null) {
+    // The active action can disappear or become disabled when the card moves.
+    moveSummary.current?.focus();
+    onMove(taskId, status, beforeTaskId);
+  }
   async function save(event: FormEvent) {
     event.preventDefault();
     if (!draft || pending || !canEdit || conflict || moving || resourcePending)
@@ -171,6 +191,11 @@ export function TaskDetail({
     attempt.current = null;
   }
   const task = query.data;
+  const boardTask = boardTasks.find((item) => item.id === taskId);
+  const column = boardTasks
+    .filter((item) => item.status === boardTask?.status)
+    .sort((a, b) => a.position - b.position);
+  const position = column.findIndex((item) => item.id === taskId);
   return (
     <Dialog
       drawer
@@ -226,6 +251,69 @@ export function TaskDetail({
                   <dt>Due date</dt>
                   <dd>{dueDateLabel(task) ?? 'No due date'}</dd>
                 </dl>
+                {canMoveTask && boardTask && (
+                  <details className="task-movement">
+                    <summary ref={moveSummary}>Move task</summary>
+                    <p role="status">
+                      Position {position + 1} of {column.length} in{' '}
+                      {statusLabels[boardTask.status]}
+                    </p>
+                    <fieldset
+                      disabled={
+                        moving ||
+                        archiving ||
+                        resourcePending ||
+                        query.isFetching
+                      }
+                      aria-label="Task movement"
+                    >
+                      {canReorder && (
+                        <>
+                          <button
+                            type="button"
+                            className="button"
+                            disabled={position === 0}
+                            onClick={() =>
+                              move(boardTask.status, column[position - 1]!.id)
+                            }
+                          >
+                            Move up
+                          </button>
+                          <button
+                            type="button"
+                            className="button"
+                            disabled={position === column.length - 1}
+                            onClick={() =>
+                              move(
+                                boardTask.status,
+                                column[position + 2]?.id ?? null,
+                              )
+                            }
+                          >
+                            Move down
+                          </button>
+                        </>
+                      )}
+                      {taskStatuses
+                        .filter((status) => status !== boardTask.status)
+                        .map((status) => (
+                          <button
+                            key={status}
+                            type="button"
+                            className="button"
+                            onClick={() => move(status, null)}
+                          >
+                            Move to {statusLabels[status]}
+                          </button>
+                        ))}
+                    </fieldset>
+                  </details>
+                )}
+                {moveError && (
+                  <p role="alert" className="error-copy">
+                    {moveError}
+                  </p>
+                )}
                 {canEdit && (
                   <button
                     className="button primary"

@@ -96,16 +96,161 @@ async function createTask(page, title, assignee = '') {
   await dialog.waitFor({ state: 'hidden' });
 }
 async function savedMove(page, action) {
-  const response = page.waitForResponse(
-    (response) =>
-      /\/api\/tasks\/[^/]+\/move$/.test(response.url()) &&
-      response.request().method() === 'POST',
-  );
-  await action();
-  assert.equal((await response).status(), 201);
+  const [response] = await Promise.all([
+    page.waitForResponse(
+      (response) =>
+        /\/api\/tasks\/[^/]+\/move$/.test(response.url()) &&
+        response.request().method() === 'POST',
+    ),
+    action(),
+  ]);
+  assert.equal(response.status(), 201);
   await page
     .getByText('Saving task position…', { exact: true })
     .waitFor({ state: 'hidden' });
+}
+async function checkMoveRecovery(owner, editor) {
+  const column = (page, name) =>
+    page.getByRole('region', { name, exact: true });
+  const card = (page, title) =>
+    page.getByRole('link').filter({
+      has: page.getByRole('heading', { name: title, exact: true }),
+    });
+  const titles = (name) =>
+    column(owner, name).locator('.task-card h3').allTextContents();
+  const prepare = card(owner, 'Prepare launch');
+  await editor.reload();
+  await column(editor, 'In Progress')
+    .getByRole('heading', { name: 'Review launch' })
+    .waitFor();
+
+  // Hold the Owner's optimistic move while the Editor commits a different move.
+  // Fail the refresh so a successful refetch cannot mask a missing local rollback.
+  const sendMove = Promise.withResolvers();
+  const boardUrl = '**/api/projects/*/board';
+  await owner.route(
+    '**/api/tasks/*/move',
+    async (route) => {
+      await sendMove.promise;
+      await route.continue();
+    },
+    { times: 1 },
+  );
+  try {
+    await prepare.dragTo(column(owner, 'To Do'));
+    await column(owner, 'To Do')
+      .getByRole('heading', { name: 'Prepare launch' })
+      .waitFor();
+    await savedMove(editor, () =>
+      card(editor, 'Review launch').dragTo(column(editor, 'To Do')),
+    );
+    await owner.route(boardUrl, (route) =>
+      route.fulfill({
+        status: 503,
+        json: {
+          code: 'SERVICE_UNAVAILABLE',
+          message: 'Board temporarily unavailable.',
+          requestId: randomUUID(),
+        },
+      }),
+    );
+    const rejected = owner.waitForResponse(
+      (response) =>
+        response.url().endsWith('/move') &&
+        response.request().method() === 'POST',
+    );
+    sendMove.resolve();
+    const response = await rejected;
+    assert.equal(response.status(), 409);
+    assert.equal((await response.json()).code, 'VERSION_CONFLICT');
+    await owner
+      .getByRole('alert')
+      .filter({
+        hasText: 'The board changed. Refresh it and choose the position again.',
+      })
+      .waitFor();
+    await owner
+      .getByRole('button', { name: 'Retry refresh', exact: true })
+      .waitFor();
+    assert.deepEqual(await titles('In Progress'), [
+      'Review launch',
+      'Prepare launch',
+    ]);
+    assert.deepEqual(await titles('To Do'), []);
+  } finally {
+    sendMove.resolve();
+    await owner.unroute(boardUrl);
+  }
+  await owner
+    .getByRole('button', { name: 'Retry refresh', exact: true })
+    .click();
+  await column(owner, 'To Do')
+    .getByRole('heading', { name: 'Review launch' })
+    .waitFor();
+  assert.deepEqual(await titles('In Progress'), ['Prepare launch']);
+
+  const dialog = owner.getByRole('dialog', { name: 'Task details' });
+  const button = (name) => dialog.getByRole('button', { name, exact: true });
+  async function openMovement() {
+    await prepare.press('Enter');
+    await dialog.getByText('Move task', { exact: true }).press('Enter');
+    await dialog.getByRole('group', { name: 'Task movement' }).waitFor();
+  }
+  async function closeMovement() {
+    await button('Close dialog').press('Enter');
+    await owner.waitForURL((url) => url.pathname.endsWith('/board'));
+    await dialog.waitFor({ state: 'hidden' });
+  }
+  async function keyboardMove(name) {
+    const enabled = button(name).and(dialog.locator('button:enabled'));
+    await enabled.waitFor();
+    await savedMove(owner, () => enabled.press('Enter'));
+  }
+  await openMovement();
+  await keyboardMove('Move to To Do');
+  await dialog.getByText('Position 2 of 2 in To Do', { exact: true }).waitFor();
+  assert.ok(await button('Move down').isDisabled());
+  // macOS WebKit uses Option+Tab to include buttons in keyboard navigation.
+  await owner.keyboard.press(
+    engine === 'webkit' && process.platform === 'darwin' ? 'Alt+Tab' : 'Tab',
+  );
+  assert.ok(
+    await button('Move up').evaluate(
+      (element) => element === document.activeElement,
+    ),
+    'After a cross-column move, Tab must reach the first available move action.',
+  );
+  await savedMove(owner, () => owner.keyboard.press('Enter'));
+  await closeMovement();
+  await owner.reload();
+  await column(owner, 'To Do')
+    .getByRole('heading', { name: 'Prepare launch' })
+    .waitFor();
+  assert.deepEqual(await titles('To Do'), ['Prepare launch', 'Review launch']);
+  await openMovement();
+  assert.ok(await button('Move up').isDisabled());
+  await keyboardMove('Move down');
+  await dialog.getByText('Position 2 of 2 in To Do', { exact: true }).waitFor();
+  await closeMovement();
+  await owner.getByRole('searchbox', { name: 'Search tasks' }).fill('Prepare');
+  await owner.getByText('1 of 2 tasks', { exact: true }).waitFor();
+  await openMovement();
+  assert.equal(await button('Move up').count(), 0);
+  assert.equal(await button('Move down').count(), 0);
+  await keyboardMove('Move to In Progress');
+  await closeMovement();
+  await owner
+    .getByRole('button', { name: 'Clear filters', exact: true })
+    .press('Enter');
+  await owner.getByText('2 of 2 tasks', { exact: true }).waitFor();
+  await owner.reload();
+  await column(owner, 'In Progress')
+    .getByRole('heading', { name: 'Prepare launch' })
+    .waitFor();
+  assert.deepEqual(await titles('To Do'), ['Review launch']);
+  console.info(
+    'Browser workflow: optimistic move, conflict rollback, reconciliation, keyboard retry and persisted ordering passed.',
+  );
 }
 async function openTask(page, title) {
   const response = page.waitForResponse(
@@ -446,10 +591,23 @@ async function checkDiscussion({ owner, editor, mobile, editorContext, base }) {
   await owner.getByRole('button', { name: 'Remove', exact: true }).click();
   await owner.getByRole('button', { name: 'Confirm', exact: true }).click();
   await owner.getByRole('dialog').waitFor({ state: 'hidden' });
+  const projectsAfterRemoval = editor.waitForResponse(
+    (response) =>
+      response.url() === `${base}/api/projects` &&
+      response.request().method() === 'GET',
+  );
   await editor
     .getByRole('button', { name: 'Close dialog', exact: true })
     .click();
   await editor.waitForURL('**/projects');
+  const projects = await projectsAfterRemoval;
+  assert.equal(projects.status(), 200);
+  assert.ok(
+    !(await projects.json()).items.some((item) => item.id === projectId),
+  );
+  await editor
+    .getByRole('heading', { name: 'Lifecycle collaboration', exact: true })
+    .waitFor();
   await editor.goto(`${base}/projects/${projectId}/activity`);
   await editor.waitForURL('**/projects');
   assert.equal(await editor.locator('.comment-section').count(), 0);
@@ -579,8 +737,11 @@ try {
   const editorContext = await browser.newContext({
     viewport: { width: 1440, height: 1000 },
   });
-  await ownerContext.route('**/api/events', (route) => route.abort());
-  await editorContext.route('**/api/events', (route) => route.abort());
+  // Use an HTTP outage for polling-only scenarios. A transport abort can
+  // surface as a page error in WebKit even when the client handles it.
+  const eventsUnavailable = (route) => route.fulfill({ status: 503, body: '' });
+  await ownerContext.route('**/api/events', eventsUnavailable);
+  await editorContext.route('**/api/events', eventsUnavailable);
   const owner = await ownerContext.newPage();
   const editor = await editorContext.newPage();
   pages.push(['owner', owner], ['editor', editor]);
@@ -879,6 +1040,7 @@ try {
     'Browser workflow: assignment, card ordering, filtered movement, and cross-column drag passed.',
   );
 
+  await checkMoveRecovery(owner, editor);
   // Creating as the second account refreshes its snapshot without waiting for polling.
   await createTask(editor, 'Editor follow-up');
   await owner
@@ -1035,7 +1197,7 @@ try {
     ...(engine === 'firefox' ? {} : { isMobile: true }),
     hasTouch: true,
   });
-  await mobileContext.route('**/api/events', (route) => route.abort());
+  await mobileContext.route('**/api/events', eventsUnavailable);
   const mobile = await mobileContext.newPage();
   pages.push(['mobile', mobile]);
   mobile.setDefaultTimeout(12000);
@@ -1139,6 +1301,13 @@ try {
     .waitFor();
   assert.equal(
     await owner.getByRole('button', { name: 'Edit task', exact: true }).count(),
+    0,
+  );
+  assert.equal(
+    await owner
+      .getByRole('dialog')
+      .getByText('Move task', { exact: true })
+      .count(),
     0,
   );
   await owner
@@ -1566,7 +1735,7 @@ try {
         workflows: [
           'invitations and quotas',
           'task edits and conflicts',
-          'movement and drag ordering',
+          'drag and keyboard movement, conflict rollback and persisted ordering',
           'notifications and read retries',
           'comments and activity',
           'lifecycle and ownership',
