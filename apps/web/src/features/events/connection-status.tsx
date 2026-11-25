@@ -4,6 +4,7 @@ import type { EventHint } from '@collabboard/contracts';
 import { useSession } from '../../app/providers/session';
 import { authorizedFetch } from '../../shared/api/client';
 import { useOnline } from '../../shared/lib/use-online';
+import { refreshFromHint } from './refresh-from-hint';
 
 export function ConnectionStatus() {
   const { user } = useSession();
@@ -19,9 +20,6 @@ function LiveConnection() {
   useEffect(() => {
     const controller = new AbortController();
     const seen = new Set<string>();
-    const reconcile = () => {
-      void client.invalidateQueries();
-    };
     async function connect() {
       let attempt = 0;
       while (!controller.signal.aborted) {
@@ -34,7 +32,7 @@ function LiveConnection() {
             throw new Error('Updates are delayed.');
           setConnected(true);
           attempt = 0;
-          reconcile();
+          void refreshFromHint(client);
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
           let buffer = '';
@@ -58,13 +56,7 @@ function LiveConnection() {
                 continue;
               seen.add(hint.eventId);
               if (seen.size > 1000) seen.delete(seen.values().next().value!);
-              void client.invalidateQueries({
-                predicate: (query) =>
-                  query.queryKey[1] === hint.projectId ||
-                  ['projects', 'notifications'].includes(
-                    String(query.queryKey[0]),
-                  ),
-              });
+              void refreshFromHint(client, hint.projectId);
             }
           }
         } catch {

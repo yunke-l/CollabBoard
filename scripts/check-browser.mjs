@@ -65,62 +65,58 @@ async function runScenario(browser, result) {
       );
     const page = await context.newPage();
     page.setDefaultTimeout(12000);
-    const role = ['owner', 'editor', 'mobile'][pages.length];
-    page.on('pageerror', (error) => {
-      const source = error.message.match(
-        /\/api\/(projects|events|auth|tasks|notifications|demo)(?=[/?\s]|$)/,
-      )?.[1];
-      console.info(
-        'Browser error',
-        role,
-        source ?? 'other',
-        /due to access control checks/.test(error.message)
-          ? 'access-control'
-          : 'other',
-      );
-      errors.push(error.message);
-    });
-    page.on('requestfailed', (request) => {
-      const resource = new URL(request.url()).pathname.split('/')[2];
-      if (
-        [
-          'projects',
-          'events',
-          'auth',
-          'tasks',
-          'notifications',
-          'demo',
-        ].includes(resource)
-      )
-        console.info(
-          'Request failed',
-          role,
-          resource,
-          request.failure()?.errorText?.includes('cancel')
-            ? 'cancelled'
-            : 'other',
-        );
-    });
-    await page.exposeFunction('reportRuntimeEvent', (kind) => {
-      if (['exception', 'rejection', 'connected', 'hint'].includes(kind))
-        console.info('Page event', role, kind);
-    });
+    // WebKit also emits inspector page errors for handled network failures.
+    // Observe JS exceptions and unhandled rejections in each document directly.
+    await page.exposeFunction('reportBrowserError', (message) =>
+      errors.push(message),
+    );
     await page.addInitScript(() => {
-      window.addEventListener('error', () =>
-        window.reportRuntimeEvent('exception'),
-      );
-      window.addEventListener('unhandledrejection', () =>
-        window.reportRuntimeEvent('rejection'),
-      );
-      const decode = TextDecoder.prototype.decode;
-      TextDecoder.prototype.decode = function (...args) {
-        const text = decode.apply(this, args);
-        if (text.includes('event: connected'))
-          window.reportRuntimeEvent('connected');
-        if (text.includes('event: hint')) window.reportRuntimeEvent('hint');
-        return text;
-      };
+      window.addEventListener('error', (event) => {
+        if (event instanceof ErrorEvent)
+          void window.reportBrowserError(event.message);
+      });
+      window.addEventListener('unhandledrejection', (event) => {
+        void window.reportBrowserError(String(event.reason));
+      });
     });
+    if (name === 'attachments') {
+      const role = ['owner', 'editor', 'mobile'][pages.length];
+      page.on('response', async (response) => {
+        const path = new URL(response.url()).pathname;
+        if (!path.startsWith('/api/')) return;
+        if (path.endsWith('/events'))
+          console.info('Stream response', role, response.status());
+        if (path.endsWith('/board') || path.endsWith('/attachments')) {
+          const body = await response.json().catch(() => null);
+          console.info(
+            'Snapshot',
+            role,
+            path.endsWith('/board') ? 'board' : 'files',
+            response.status(),
+            body?.tasks?.length ?? body?.items?.length ?? 'no body',
+          );
+        }
+      });
+      page.on('console', (message) => {
+        if (
+          /^fixture hint (task|attachment|project|other)$/.test(message.text())
+        )
+          console.info(role, message.text());
+      });
+      await page.addInitScript(() => {
+        const decode = TextDecoder.prototype.decode;
+        TextDecoder.prototype.decode = function (...args) {
+          const text = decode.apply(this, args);
+          if (text.includes('event: hint'))
+            console.info(
+              'fixture hint ' +
+                (text.match(/"eventType":"(task|attachment|project)\./)?.[1] ??
+                  'other'),
+            );
+          return text;
+        };
+      });
+    }
     pages.push(page);
     return page;
   }
