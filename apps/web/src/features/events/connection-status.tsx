@@ -40,6 +40,14 @@ function LiveConnection() {
             const { value, done } = await reader.read();
             if (done) break;
             buffer += decoder.decode(value, { stream: true });
+            console.debug(
+              'hint-reader',
+              value.length,
+              buffer.length,
+              buffer.indexOf('\n\n'),
+              buffer.endsWith('\n\n'),
+              buffer.startsWith('event: '),
+            );
             let end;
             while ((end = buffer.indexOf('\n\n')) >= 0) {
               const frame = buffer.slice(0, end);
@@ -54,6 +62,23 @@ function LiveConnection() {
                 seen.has(hint.eventId)
               )
                 continue;
+              console.debug(
+                'hint-refresh',
+                hint.eventType.split('.')[0],
+                navigator.onLine,
+                document.visibilityState,
+                client
+                  .getQueryCache()
+                  .findAll({ queryKey: ['board', hint.projectId] })
+                  .map((q) =>
+                    [
+                      q.state.fetchStatus,
+                      q.getObserversCount(),
+                      q.isActive(),
+                    ].join('/'),
+                  )
+                  .join(','),
+              );
               seen.add(hint.eventId);
               if (seen.size > 1000) seen.delete(seen.values().next().value!);
               void refreshFromHint(client, hint.projectId);

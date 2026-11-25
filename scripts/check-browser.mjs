@@ -71,51 +71,36 @@ async function runScenario(browser, result) {
       errors.push(message),
     );
     await page.addInitScript(() => {
-      window.addEventListener('error', (event) => {
+      globalThis.addEventListener('error', (event) => {
         if (event instanceof ErrorEvent)
-          void window.reportBrowserError(event.message);
+          void globalThis.reportBrowserError(event.message);
       });
-      window.addEventListener('unhandledrejection', (event) => {
-        void window.reportBrowserError(String(event.reason));
+      globalThis.addEventListener('unhandledrejection', (event) => {
+        void globalThis.reportBrowserError(String(event.reason));
       });
     });
     if (name === 'attachments') {
       const role = ['owner', 'editor', 'mobile'][pages.length];
-      page.on('response', async (response) => {
-        const path = new URL(response.url()).pathname;
-        if (!path.startsWith('/api/')) return;
-        if (path.endsWith('/events'))
-          console.info('Stream response', role, response.status());
-        if (path.endsWith('/board') || path.endsWith('/attachments')) {
-          const body = await response.json().catch(() => null);
-          console.info(
-            'Snapshot',
-            role,
-            path.endsWith('/board') ? 'board' : 'files',
-            response.status(),
-            body?.tasks?.length ?? body?.items?.length ?? 'no body',
-          );
-        }
-      });
       page.on('console', (message) => {
-        if (
-          /^fixture hint (task|attachment|project|other)$/.test(message.text())
-        )
+        if (/^hint-(reader|refresh) /.test(message.text()))
           console.info(role, message.text());
       });
-      await page.addInitScript(() => {
-        const decode = TextDecoder.prototype.decode;
-        TextDecoder.prototype.decode = function (...args) {
-          const text = decode.apply(this, args);
-          if (text.includes('event: hint'))
+      for (const event of ['request', 'requestfailed', 'response']) {
+        page.on(event, (obj) => {
+          const path = new URL(obj.url()).pathname;
+          if (
+            path.endsWith('/board') ||
+            path.endsWith('/events') ||
+            path.endsWith('/attachments')
+          )
             console.info(
-              'fixture hint ' +
-                (text.match(/"eventType":"(task|attachment|project)\./)?.[1] ??
-                  'other'),
+              role,
+              event,
+              path.split('/').at(-1),
+              obj.status?.() ?? '',
             );
-          return text;
-        };
-      });
+        });
+      }
     }
     pages.push(page);
     return page;
