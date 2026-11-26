@@ -4,6 +4,9 @@
 /CollabBoard-Design-*.zip
 /CollabBoard-Design-*.zip.sha256
 
+# Local recording prompts and storyboards may contain deployment details.
+/media/production/
+
 # Dependencies and generated output
 node_modules/
 dist/
